@@ -4,6 +4,7 @@ using Latios.Kinemation;
 using Latios.Kinemation.Authoring;
 using Unity.Collections;
 using Unity.Entities;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace Latios.MecanimV2.Authoring
@@ -76,11 +77,23 @@ namespace Latios.MecanimV2.Authoring
             // Bake avatar masks
             var avatarMasks = new NativeList<UnityObjectRef<AvatarMask>>(1,Allocator.Temp);
             var layers = baseAnimatorControllerRef.controller.layers;
+            
             foreach (var layer in layers)
             {
                 if (layer.avatarMask == null) continue;
                 
                 avatarMasks.Add(layer.avatarMask);
+            }
+            
+            // Add build buffer element for layer weights if there is more than one layer
+            if (layers.Length > 1)
+            {
+                DynamicBuffer<LayerWeights> weights = baker.AddBuffer<LayerWeights>(entity);
+
+                foreach (var layer in layers)
+                {
+                    weights.Add(new LayerWeights { weight = layer.defaultWeight });
+                }
             }
 
             m_clipSetBlobHandle    = baker.RequestCreateBlobAsset(authoring, skeletonClipConfigs);
