@@ -232,14 +232,14 @@ namespace Latios.MecanimV2
             // with parent sub-state machine indices. Each state would then index a sub-state machine and we'd walk back to the root.
             // Such a strategy would still support our flattened representation.
             public BlobArray<Transition> anyStateTransitions;
+            
             // These only have destination state indices and conditions. There's no timing. And we only care about this on the very first update.
-            // In baking, we need to identify the default transition and ensure that is index 0.
+            // In baking, we need to identify the default transition and add it at the end, after all other entry transitions.
             // Also in baking, we should convert each state -> exit -> entry -> state permutation to direct state -> state transitions.
             // This might sound like a potential issue of overflowing 15 bits, but we have a unique set of transition indices per state.
             // Without this flattening, we run into issues with our transition data being spread across two different transition instances.
             // The exit transition (or transition into a sub-state machine) contains the blending info and interrupts, while the entry
             // transition contains the target state.
-
             public BlobArray<Transition>          initializationEntryStateTransitions;
             public BlobArray<int>                 stateNameHashes;
             public BlobArray<int>                 stateNameEditorHashes;

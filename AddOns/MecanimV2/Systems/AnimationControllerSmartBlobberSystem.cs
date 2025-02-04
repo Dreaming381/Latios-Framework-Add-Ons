@@ -261,24 +261,20 @@ namespace Latios.MecanimV2.Authoring.Systems
 
             bool addDefaultState = mustAddDefaultStateTransition && layer.stateMachine.defaultState != null;
             
-            if (addDefaultState)
-            {
-                transitionsCount++; // we allocate one more for the default entry state transition in position 0 when needed
-            }
+            if (addDefaultState) transitionsCount++; // we allocate one more for the default entry state transition in position 0 when needed
             
             BlobBuilderArray<MecanimControllerBlob.Transition> entryTransitionsBuilder = builder.Allocate(ref transitionsBlobArray, transitionsCount); 
-
-            if (addDefaultState)
-            {
-                // Add a dummy transition to the default state in position 0 of the array
-                entryTransitionsBuilder[0].destinationStateIndex = (short) statesIndicesHashMap[layer.stateMachine.defaultState];
-            }
-
+            
             for (var i = 0; i < collapsedTransitions.Count; i++)
             {
                 var collapsedTransition = collapsedTransitions[i];
-                int indexInBlobArray = addDefaultState ? i + 1 : i;
-                BakeAnimatorStateTransitionWithCustomConditions(ref builder, ref entryTransitionsBuilder[indexInBlobArray], collapsedTransition.transition, collapsedTransition.conditions, collapsedTransition.destinationStateIndex, parameters);
+                BakeAnimatorStateTransitionWithCustomConditions(ref builder, ref entryTransitionsBuilder[i], collapsedTransition.transition, collapsedTransition.conditions, collapsedTransition.destinationStateIndex, parameters);
+            }
+            
+            if (addDefaultState)
+            {
+                // Add a dummy transition to the default state in the last position of the blob array
+                entryTransitionsBuilder[collapsedTransitions.Count].destinationStateIndex = (short) statesIndicesHashMap[layer.stateMachine.defaultState];
             }
         }
 
