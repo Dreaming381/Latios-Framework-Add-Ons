@@ -186,14 +186,14 @@ namespace Latios.MecanimV2
             public float duration;
         }
 
-        static MecanimStateMachineActiveStates SetupInitialState(ref Blob controllerBlob,
+        public static MecanimStateMachineActiveStates SetupInitialState(ref Blob controllerBlob,
                                                                  int stateMachineIndex,
                                                                  ReadOnlySpan<MecanimParameter> parameters,
                                                                  Span<BitField64>               triggersToReset)
         {
             ref var stateMachine = ref controllerBlob.stateMachines[stateMachineIndex];
             ref var candidates   = ref stateMachine.initializationEntryStateTransitions;
-            for (int i = 1; i < candidates.Length; i++)
+            for (int i = 0; i < candidates.Length; i++)
             {
                 ref var candidate = ref candidates[i];
                 if (MatchesConditions(ref candidate.conditions, ref controllerBlob.parameterTypes, parameters, triggersToReset))
