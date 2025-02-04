@@ -120,43 +120,6 @@ namespace Latios.MecanimV2.Authoring.Systems
             }
         }
 
-        private static int FindDestinationStateIndexForTransition(AnimatorTransitionBase transition, List<StateInfo> states)
-        {
-            AnimatorState transitionDestinationState = transition.destinationState;
-
-            // If it doesn't have a destination state, it's pointing to a state machine and we can get its default state
-            if (transition.destinationState == null)
-            {
-                transitionDestinationState = transition.destinationStateMachine.defaultState;
-            }
-
-            var destinationStateIndex = -1;
-            for (int i = 0; i < states.Count; i++)
-            {
-                if (states[i].animationState == transitionDestinationState)
-                {
-                    destinationStateIndex = i;
-                    break;
-                }
-            }
-
-            return destinationStateIndex;
-        }
-
-        private static int FindStateIndexForState(AnimatorState state, List<StateInfo> states)
-        {
-            var destinationStateIndex = -1;
-            for (int i = 0; i < states.Count; i++)
-            {
-                if (states[i].animationState == state)
-                {
-                    destinationStateIndex = i;
-                    break;
-                }
-            }
-            return destinationStateIndex;
-        }
-
         private void BakeState(
             ref MecanimControllerBlob.State blobState,
             short stateIndexInStateMachine,
@@ -240,24 +203,18 @@ namespace Latios.MecanimV2.Authoring.Systems
             CollectStateInfosRecursivelyForStateMachine(ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap, layer.stateMachine);
 
             //States
-            BlobBuilderArray<MecanimControllerBlob.State> statesBuilder =
-                builder.Allocate(ref stateMachineBlob.states, stateInfos.Count);
+            BlobBuilderArray<MecanimControllerBlob.State> statesBuilder = builder.Allocate(ref stateMachineBlob.states, stateInfos.Count);
 
-            BlobBuilderArray<int> stateNameHashesBuilder =
-                builder.Allocate(ref stateMachineBlob.stateNameHashes, stateInfos.Count);
-            BlobBuilderArray<int> stateNameEditorHashesBuilder =
-                builder.Allocate(ref stateMachineBlob.stateNameEditorHashes, stateInfos.Count);
-            BlobBuilderArray<FixedString128Bytes> stateNamesBuilder =
-                builder.Allocate(ref stateMachineBlob.stateNames, stateInfos.Count);
-            BlobBuilderArray<FixedString128Bytes> stateTagsBuilder =
-                builder.Allocate(ref stateMachineBlob.stateTags, stateInfos.Count);
-
+            BlobBuilderArray<int> stateNameHashesBuilder = builder.Allocate(ref stateMachineBlob.stateNameHashes, stateInfos.Count);
+            BlobBuilderArray<int> stateNameEditorHashesBuilder = builder.Allocate(ref stateMachineBlob.stateNameEditorHashes, stateInfos.Count);
+            BlobBuilderArray<FixedString128Bytes> stateNamesBuilder = builder.Allocate(ref stateMachineBlob.stateNames, stateInfos.Count);
+            BlobBuilderArray<FixedString128Bytes> stateTagsBuilder = builder.Allocate(ref stateMachineBlob.stateTags, stateInfos.Count);
 
             // Build BlobArray of states
             for (short i = 0; i < stateInfos.Count; i++)
             {
                 // Bake transitions for this state
-                BakeTransitionsForState(stateInfos[i], ref builder, ref statesBuilder[i], ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap, parameters);
+                BakeTransitionsForState(stateInfos[i], ref builder, ref statesBuilder[i], ref statesIndicesHashMap, ref stateMachineParentHashMap, parameters);
                 
                 BakeState(ref statesBuilder[i], i, stateInfos[i].animationState, parameters);
 
@@ -267,41 +224,67 @@ namespace Latios.MecanimV2.Authoring.Systems
                 stateTagsBuilder[i]             = stateInfos[i].animationState.tag;
             }
 
-            // Bake EntryState transitions
-            short defaultStateIndex       = (short)FindStateIndexForState(layer.stateMachine.defaultState, stateInfos);
-            BlobBuilderArray<MecanimControllerBlob.Transition> entryTransitionsBuilder =
-                builder.Allocate(ref stateMachineBlob.initializationEntryStateTransitions, layer.stateMachine.entryTransitions.Length + 1);  // we allocate one more for the default in position 0
-
-            // Add a dummy transition to the default state in position 0 of the array
-            entryTransitionsBuilder[0].destinationStateIndex = defaultStateIndex;
-
-            for (int i = 0; i < layer.stateMachine.entryTransitions.Length; i++)
-            {
-                AnimatorTransition stateMachineEntryTransition = layer.stateMachine.entryTransitions[i];
-
-                int stateDestinationIndex = FindDestinationStateIndexForTransition(stateMachineEntryTransition, stateInfos);
-
-                // Default state dummy transition is in index 0. We add the rest of the entry transitions after that one.
-                BakeAnimatorStateTransition(ref builder, ref entryTransitionsBuilder[i + 1], stateMachineEntryTransition, stateDestinationIndex, parameters);
-            }
-
+            // Bake Entry transitions
+            BakeStateMachineSpecialTransitions(ref builder, layer.stateMachine.entryTransitions, ref stateMachineBlob.initializationEntryStateTransitions, layer, parameters, statesIndicesHashMap, stateMachineParentHashMap, mustAddDefaultStateTransition: true);
+            
             // Bake AnyState transitions
-            BlobBuilderArray<MecanimControllerBlob.Transition> anyStateTransitionsBuilder =
-                builder.Allocate(ref stateMachineBlob.anyStateTransitions, layer.stateMachine.anyStateTransitions.Length);
-            for (int i = 0; i < layer.stateMachine.anyStateTransitions.Length; i++)
-            {
-                int stateDestinationIndex = FindDestinationStateIndexForTransition(layer.stateMachine.anyStateTransitions[i], stateInfos);
-
-                BakeAnimatorStateTransition(ref builder, ref anyStateTransitionsBuilder[i], layer.stateMachine.anyStateTransitions[i], stateDestinationIndex, parameters);
-            }
+            BakeStateMachineSpecialTransitions(ref builder, layer.stateMachine.anyStateTransitions, ref stateMachineBlob.anyStateTransitions, layer, parameters, statesIndicesHashMap, stateMachineParentHashMap, mustAddDefaultStateTransition: false);
 
             return stateMachineBlob;
+        }
+
+        private void BakeStateMachineSpecialTransitions(ref BlobBuilder builder,
+            AnimatorTransitionBase[] specialTransitionsArray,
+            ref BlobArray<MecanimControllerBlob.Transition> transitionsBlobArray,
+            AnimatorControllerLayer layer,
+            AnimatorControllerParameter[] parameters,
+            UnsafeHashMap<UnityObjectRef<AnimatorState>, int> statesIndicesHashMap,
+            UnsafeHashMap<UnityObjectRef<AnimatorStateMachine>, UnityObjectRef<AnimatorStateMachine>>
+                stateMachineParentHashMap,
+            bool mustAddDefaultStateTransition)
+        {
+            // We use this list to return all the collapsed transitions we find for a specific starting transition
+            List<CollapsedTransition> collapsedTransitions = new List<CollapsedTransition>();
+            // We use this list to accumulate conditions recursively so we can add the list of conditions to a transition when we find its destination state
+            List<AnimatorCondition> accumulatedConditions = new List<AnimatorCondition>();
+                        
+            // BAKE ENTRY TRANSITIONS
+            foreach (var specialTransition in specialTransitionsArray)
+            {
+                accumulatedConditions.Clear();
+                
+                // Process entry transitions. Must find the destination state recursively in case they are pointing to a hierarchy of sub state machines.
+                FindCollapsedTransitions(specialTransition, specialTransition, layer.stateMachine, accumulatedConditions, collapsedTransitions, ref statesIndicesHashMap, ref stateMachineParentHashMap);
+            }
+
+            int transitionsCount = collapsedTransitions.Count;
+
+            bool addDefaultState = mustAddDefaultStateTransition && layer.stateMachine.defaultState != null;
+            
+            if (addDefaultState)
+            {
+                transitionsCount++; // we allocate one more for the default entry state transition in position 0 when needed
+            }
+            
+            BlobBuilderArray<MecanimControllerBlob.Transition> entryTransitionsBuilder = builder.Allocate(ref transitionsBlobArray, transitionsCount); 
+
+            if (addDefaultState)
+            {
+                // Add a dummy transition to the default state in position 0 of the array
+                entryTransitionsBuilder[0].destinationStateIndex = (short) statesIndicesHashMap[layer.stateMachine.defaultState];
+            }
+
+            for (var i = 0; i < collapsedTransitions.Count; i++)
+            {
+                var collapsedTransition = collapsedTransitions[i];
+                int indexInBlobArray = addDefaultState ? i + 1 : i;
+                BakeAnimatorStateTransitionWithCustomConditions(ref builder, ref entryTransitionsBuilder[indexInBlobArray], collapsedTransition.transition, collapsedTransition.conditions, collapsedTransition.destinationStateIndex, parameters);
+            }
         }
 
         private void BakeTransitionsForState(StateInfo stateInfo,
             ref BlobBuilder blobBuilder,
             ref MecanimControllerBlob.State stateBlob,
-            ref List<StateInfo> stateInfos,
             ref UnsafeHashMap<UnityObjectRef<AnimatorState>, int> statesIndicesHashMap,
             ref UnsafeHashMap<UnityObjectRef<AnimatorStateMachine>, UnityObjectRef<AnimatorStateMachine>> stateMachineParentHashMap,
             AnimatorControllerParameter[] parameters)
@@ -316,7 +299,7 @@ namespace Latios.MecanimV2.Authoring.Systems
             {
                 var transition = stateInfo.animationState.transitions[index];
 
-                FindCollapsedTransitions(transition, transition, stateInfo.stateMachine, accumulatedConditions, collapsedTransitions, ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap);
+                FindCollapsedTransitions(transition, transition, stateInfo.stateMachine, accumulatedConditions, collapsedTransitions, ref statesIndicesHashMap, ref stateMachineParentHashMap);
             }
             
             // Actually bake all the transitions and conditions we collected
@@ -328,7 +311,7 @@ namespace Latios.MecanimV2.Authoring.Systems
             }
         }
 
-        private void FindCollapsedTransitions(AnimatorStateTransition startTransition, AnimatorTransitionBase currentTransition, AnimatorStateMachine currentStateMachine, List<AnimatorCondition> accumulatedConditions, List<CollapsedTransition> collapsedTransitions, ref List<StateInfo> stateInfos, ref UnsafeHashMap<UnityObjectRef<AnimatorState>, int> statesIndicesHashMap, ref UnsafeHashMap<UnityObjectRef<AnimatorStateMachine>, UnityObjectRef<AnimatorStateMachine>> stateMachineParentHashMap)
+        private void FindCollapsedTransitions(AnimatorTransitionBase startTransition, AnimatorTransitionBase currentTransition, AnimatorStateMachine currentStateMachine, List<AnimatorCondition> accumulatedConditions, List<CollapsedTransition> collapsedTransitions, ref UnsafeHashMap<UnityObjectRef<AnimatorState>, int> statesIndicesHashMap, ref UnsafeHashMap<UnityObjectRef<AnimatorStateMachine>, UnityObjectRef<AnimatorStateMachine>> stateMachineParentHashMap)
         {
             int addedConditions = currentTransition.conditions.Length;
             accumulatedConditions.AddRange(currentTransition.conditions);
@@ -351,7 +334,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                 // Transition points to a state machine. We need to iterate through all the entry transitions and the default transition.
                 foreach (var destinationMachineEntryTransition in currentTransition.destinationStateMachine.entryTransitions)
                 {
-                    FindCollapsedTransitions(startTransition, destinationMachineEntryTransition, currentTransition.destinationStateMachine, accumulatedConditions, collapsedTransitions, ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap);
+                    FindCollapsedTransitions(startTransition, destinationMachineEntryTransition, currentTransition.destinationStateMachine, accumulatedConditions, collapsedTransitions, ref statesIndicesHashMap, ref stateMachineParentHashMap);
                 }
 
                 // Add a transition to the destination machine default state if needed too
@@ -373,7 +356,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                     // We are exiting a sub-state machine, we need to iterate through the transitions coming out of this state machine in the parent's state machine 
                     foreach (var transitionOutOfThisStateMachine in parentStateMachine.Value.GetStateMachineTransitions(currentStateMachine))
                     {
-                        FindCollapsedTransitions(startTransition, transitionOutOfThisStateMachine, parentStateMachine, accumulatedConditions, collapsedTransitions, ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap);
+                        FindCollapsedTransitions(startTransition, transitionOutOfThisStateMachine, parentStateMachine, accumulatedConditions, collapsedTransitions, ref statesIndicesHashMap, ref stateMachineParentHashMap);
                     }
                 }
                 else
@@ -381,7 +364,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                     // We reached an exit state in the root state machine. We need to iterate through the entry states of the root machine
                     foreach (var rootStateMachineEntryTransition in currentStateMachine.entryTransitions)
                     {
-                        FindCollapsedTransitions(startTransition, rootStateMachineEntryTransition, currentStateMachine, accumulatedConditions, collapsedTransitions, ref stateInfos, ref statesIndicesHashMap, ref stateMachineParentHashMap);
+                        FindCollapsedTransitions(startTransition, rootStateMachineEntryTransition, currentStateMachine, accumulatedConditions, collapsedTransitions, ref statesIndicesHashMap, ref stateMachineParentHashMap);
                     }
                     
                     // Add a transition to the default state in the parent machine too
