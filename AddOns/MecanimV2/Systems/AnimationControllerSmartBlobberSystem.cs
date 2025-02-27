@@ -506,9 +506,10 @@ namespace Latios.MecanimV2.Authoring.Systems
         private void BuildClipMotionIndicesHashes(AnimatorController animatorController, ref UnsafeHashMap<UnityObjectRef<AnimationClip>, int> animationClipIndicesHashMap)
         {
             // Save indices for each AnimationClip in a hashmap for easy lookups while baking layers and blend trees
-            foreach (var clip in animatorController.animationClips)
+            for (var index = 0; index < animatorController.animationClips.Length; index++)
             {
-                animationClipIndicesHashMap.TryAdd(clip, animationClipIndicesHashMap.Count);
+                var clip = animatorController.animationClips[index];
+                animationClipIndicesHashMap.TryAdd(clip, index);
             }
         }
 

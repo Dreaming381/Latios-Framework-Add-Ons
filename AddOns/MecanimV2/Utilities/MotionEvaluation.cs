@@ -1,17 +1,16 @@
 using System;
 using Latios.Kinemation;
-using Unity.Collections;
-using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Latios.MecanimV2
 {
     public static class MotionEvaluation
     {
         public static float GetBlendedMotionDuration(ref MecanimControllerBlob controller,
-                                                     ref SkeletonClipSetBlob clips,
-                                                     ReadOnlySpan<MecanimParameter>    parameters,
-                                                     MecanimControllerBlob.MotionIndex motion)
+            ref SkeletonClipSetBlob clips,
+            ReadOnlySpan<MecanimParameter> parameters,
+            MecanimControllerBlob.MotionIndex motion)
         {
             if (motion.invalid)
                 return 0f;
@@ -23,183 +22,337 @@ namespace Latios.MecanimV2
             ref var tree = ref controller.blendTrees[motion.index];
             if (tree.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.Simple1D)
             {
-                // Find the last child before or at our parameter
-                int beforeIndex = -1;
-                var parameter   = parameters[tree.parameterIndices[0]].floatParam;
-                for (int i = 0; i < tree.children.Length; i++)
-                {
-                    if (tree.children[i].position.x <= parameter)
-                        beforeIndex = i;
-                    else
-                        break;
-                }
-
-                // Find the first child at or after our parameter
-                int afterIndex;
-                if (beforeIndex >= 0 && tree.children[beforeIndex].position.x == parameter)
-                    afterIndex = beforeIndex;
-                else
-                    afterIndex = beforeIndex + 1;
-
-                // Try to get the child before's duration. If invalid, walk backwards.
-                float beforeDuration = 0f;
-                if (beforeIndex >= 0)
-                {
-                    var timeScale  = math.abs(tree.children[beforeIndex].timeScale);
-                    beforeDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
-                    while (beforeDuration == 0f)
-                    {
-                        beforeIndex--;
-                        if (beforeIndex < 0)
-                            break;
-                        beforeDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
-                    }
-                }
-
-                // Try to get the child after's duration. If invalid, walk backwards.
-                float afterDuration = 0f;
-                if (afterIndex < tree.children.Length)
-                {
-                    var timeScale = math.abs(tree.children[afterIndex].timeScale);
-                    afterDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
-                    while (afterDuration == 0f)
-                    {
-                        afterIndex++;
-                        if (afterIndex == tree.children.Length)
-                            break;
-                        afterDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
-                    }
-                }
-
-                // Process results
-                if (beforeIndex < 0 && afterIndex == tree.children.Length)
-                    return 0f; // Tree is totally invalid
-                if (beforeIndex < 0)
-                    return afterDuration;
-                if (afterIndex == tree.children.Length)
-                    return beforeDuration;
-                return math.remap(tree.children[beforeIndex].position.x, tree.children[afterIndex].position.x, beforeDuration, afterDuration, parameter);
+                return GetBlendedMotionDurationSimple1D(ref controller, ref clips, parameters, ref tree);
             }
+
             if (tree.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.SimpleDirectional2D)
             {
-                // Todo: Mecanim V1 doesn't support the center clip, which means it is the wrong algorithm.
-                throw new NotImplementedException();
+                return GetBlendedMotionDurationSimpleDirectional2D(ref controller, ref clips, parameters, ref tree);
             }
+
             if (tree.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.Direct)
             {
-                var totalWeight   = 0f;
-                var totalDuration = 0f;
-                for (int i = 0; i < tree.children.Length; i++)
-                {
-                    var weight = parameters[tree.parameterIndices[i]].floatParam;
-                    if (weight > 0f)
-                    {
-                        totalWeight   += weight;
-                        totalDuration += weight * math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller,
-                                                                                                                  ref clips,
-                                                                                                                  parameters,
-                                                                                                                  tree.children[i].motionIndex);
-                    }
-                }
-                if (totalWeight <= 0f)
-                    return 0f;
-                return totalDuration / totalWeight;
+                return GetBlendedMotionDurationDirect(ref controller, ref clips, parameters, ref tree);
             }
-            // Freeform (directional or cartesian)
+            
+            return GetBlendedMotionDurationFreeform(ref controller, ref clips, parameters, ref tree);
+        }
+
+
+        private static float GetBlendedMotionDurationSimple1D(ref MecanimControllerBlob controller, ref SkeletonClipSetBlob clips, ReadOnlySpan<MecanimParameter> parameters, ref MecanimControllerBlob.BlendTree tree)
+        {
+            // Find the last child before or at our parameter
+            int beforeIndex = -1;
+            var parameter   = parameters[tree.parameterIndices[0]].floatParam;
+            for (int i = 0; i < tree.children.Length; i++)
             {
-                // See https://runevision.com/thesis/rune_skovbo_johansen_thesis.pdf at 6.3 (p58) for details.
-                // Freeform cartesian uses cartesian gradient bands, while freeform directional uses gradient
-                // bands in polar space.
-                var          childCount = tree.children.Length;
-                Span<float>  weights    = stackalloc float[childCount];
-                Span<float2> pips       = stackalloc float2[childCount];
-                Span<bool>   invalids   = stackalloc bool[childCount];
-                invalids.Clear();
-                Span<float> durations = stackalloc float[childCount];
-                durations.Fill(-1f);
+                if (tree.children[i].position.x <= parameter)
+                    beforeIndex = i;
+                else
+                    break;
+            }
 
-                var blendParameters = new float2(parameters[tree.parameterIndices[0]].floatParam, parameters[tree.parameterIndices[1]].floatParam);
+            // Find the first child at or after our parameter
+            int afterIndex;
+            if (beforeIndex >= 0 && tree.children[beforeIndex].position.x == parameter)
+                afterIndex = beforeIndex;
+            else
+                afterIndex = beforeIndex + 1;
 
-                // Precompute the pip vectors, because in freeform directional, the atan2 is pricy.
-                for (int i = 0; i < childCount; i++)
+            // Try to get the child before's duration. If invalid, walk backwards.
+            float beforeDuration = 0f;
+            if (beforeIndex >= 0)
+            {
+                var timeScale  = math.abs(tree.children[beforeIndex].timeScale);
+                beforeDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
+                while (beforeDuration == 0f)
                 {
-                    var    p     = blendParameters;
-                    var    pi    = tree.children[i].position;
-                    var    pmag  = 0f;
-                    var    pimag = 0f;
-                    float2 pip;
-                    if (tree.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D)
+                    beforeIndex--;
+                    if (beforeIndex < 0)
+                        break;
+                    beforeDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
+                }
+            }
+
+            // Try to get the child after's duration. If invalid, walk backwards.
+            float afterDuration = 0f;
+            if (afterIndex < tree.children.Length)
+            {
+                var timeScale = math.abs(tree.children[afterIndex].timeScale);
+                afterDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
+                while (afterDuration == 0f)
+                {
+                    afterIndex++;
+                    if (afterIndex == tree.children.Length)
+                        break;
+                    afterDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
+                }
+            }
+
+            // Process results
+            if (beforeIndex < 0 && afterIndex == tree.children.Length)
+                return 0f; // Tree is totally invalid
+            if (beforeIndex < 0)
+                return afterDuration;
+            if (afterIndex == tree.children.Length)
+                return beforeDuration;
+            return math.remap(tree.children[beforeIndex].position.x, tree.children[afterIndex].position.x, beforeDuration, afterDuration, parameter);
+        }
+        
+        
+        
+        public static float GetBlendedMotionDurationSimpleDirectional2D(ref MecanimControllerBlob controller, ref SkeletonClipSetBlob clips, ReadOnlySpan<MecanimParameter> parameters, ref MecanimControllerBlob.BlendTree tree)
+        {
+            var         childCount       = tree.children.Length;
+            var         blendParameters  = new float2(parameters[tree.parameterIndices[0]].floatParam, parameters[tree.parameterIndices[1]].floatParam);
+            
+            Span<float> atans            = stackalloc float[childCount];
+            
+            int centerClipIndex       = -1;
+            int counterClockwiseIndex = -1;
+            int clockWiseIndex        = -1;
+            
+            float clipWeightCounterClockwise = 0f;
+            float clipWeightClockwise        = 0f;
+            float clipWeightCenter           = 0f;
+            
+            // Pre-calculate expensive atan calculations for each child and find center clip if any
+            for (int i = 0; i < tree.children.Length; i++)
+            {
+                var childPosition = tree.children[i].position;
+                if (childPosition.Equals(float2.zero))
+                {
+                    atans[i] = 0;
+                    centerClipIndex = i;
+                }
+                else
+                {
+                    atans[i] = math.atan2(childPosition.y, childPosition.x);
+                }
+            }
+            
+            // if the parameters are in the center, no need to find anything else, put all the weight on the center
+            if (blendParameters.Equals(float2.zero))
+            {
+                clipWeightCenter = 1f;
+            }
+            else
+            {
+                // Find the closest two clips to the blendParameters going clockwise and going counterclockwise (that are not the center clip) 
+                float targetAngle = math.atan2(blendParameters.y, blendParameters.x);
+                float minCounterClockwiseDifference = float.MaxValue;
+                float minClockwiseDifference = float.MaxValue;
+
+                for (int i = 0; i < atans.Length; i++)
+                {
+                    if (i != centerClipIndex)
                     {
-                        pmag          = math.length(p);
-                        pimag         = math.length(pi);
-                        pip.x         = (pmag - pimag) / (0.5f * (pmag + pimag));
-                        var direction = LatiosMath.ComplexMul(pi, new float2(p.x, -p.y));
-                        pip.y         = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * math.atan2(direction.y, direction.x);
+                        float angle = atans[i];
+                        float diff = angle - targetAngle;
+
+                        // Normalize the angle difference to be between [-π, π]
+                        diff = (diff + math.PI) % (2 * math.PI) - math.PI;
+                        
+                        if (diff > 0 && diff < minCounterClockwiseDifference)
+                        {
+                            minCounterClockwiseDifference = diff;
+                            counterClockwiseIndex = i;
+                        }
+                        else if (diff < 0 && -diff < minClockwiseDifference)
+                        {
+                            minClockwiseDifference = -diff;
+                            clockWiseIndex = i;
+                        }
                     }
-                    else
-                    {
-                        pip = p - pi;
-                    }
-                    pips[i] = pip;
                 }
 
-                // We try to only sample the child nodes if they have nonzero weights. However, invalid nodes could potentially
-                // result in zero-weight nodes turning into nonzero weight nodes. So we need to restart whenever we detect invalid
-                // nodes, which should be rare.
-                bool  foundInvalid      = false;
-                float accumulatedWeight = 0f;
-                while (!foundInvalid)
+                if (counterClockwiseIndex < 0 || clockWiseIndex < 0)
                 {
-                    foundInvalid = false;
-                    // Reset the weights
-                    weights.Fill(float.MaxValue);
-                    accumulatedWeight = 0f;
-
-                    for (int i = 0; i < childCount; i++)
-                    {
-                        if (invalids[i])
-                            continue;
-
-                        var pip = pips[i];
-
-                        for (int j = 0; j < childCount; j++)
-                        {
-                            if (invalids[j] || j == i)
-                                continue;
-
-                            var pipj   = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
-                            var h      = math.max(0, 1 - math.dot(pip, pipj.xy) * pipj.z);
-                            weights[i] = math.min(weights[i], h);
-                        }
-
-                        accumulatedWeight += weights[i];
-
-                        // Populate child node durations we haven't acquired yet
-                        if (weights[i] > 0f && durations[i] < -0.5f)
-                        {
-                            durations[i] = math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[i].motionIndex);
-                            if (durations[i] <= 0f)
-                            {
-                                foundInvalid = true;
-                                invalids[i]  = true;
-                                break;
-                            }
-                        }
-                    }
+                    // TODO: we should check blend tree child positions and give warnings about this while baking so it doesn't fail silently.
+                    // Requirements for 2D Simple Directional blend trees: Clip positions must be at least 2 degrees and at most 180 degrees apart from each other radially.
+                    // Only one optional clip can be at the center.
+                    return 0f;
                 }
+                
+                
+                // Calculate the 3 barycentric weights for the blendParameters target position, using the triangle formed by the 2 clips positions and the center
+                float3 weights = GetBarycentricWeights(tree.children[counterClockwiseIndex].position, tree.children[clockWiseIndex].position, blendParameters);
+                clipWeightCounterClockwise = weights.x;
+                clipWeightClockwise = weights.y;
+                clipWeightCenter = weights.z;
+                
+                // When the target point is beyond the segment that connects the two clips, the center weight will turn negative
+                // To fix this, we need to make the weight center 0, and divide the weights of the remaining two clips by the sum of both, to make sure they add up to 1
+                if (clipWeightCenter < 0f)
+                {
+                    clipWeightCenter = 0f;
+                    float sumClipWeights = clipWeightClockwise + clipWeightCounterClockwise;
+                    clipWeightCounterClockwise /= sumClipWeights;
+                    clipWeightClockwise /= sumClipWeights;
+                }
+            }
+            
+            // If there is no center clip, it's weight gets split evenly between all clips
+            float extraWeightForEachChild = 0f;
+            if (centerClipIndex < 0)
+            {
+                extraWeightForEachChild = clipWeightCenter / childCount;
+            }
+            
+            // Sum all the durations, multiplied by their weights and time scales
+            float duration = 0f;
+            for (int i = 0; i < childCount; i++)
+            {
+                float weight = extraWeightForEachChild;
+                
+                if (i == centerClipIndex) weight += clipWeightCenter;
+                if (i == clockWiseIndex) weight += clipWeightClockwise;
+                if (i == counterClockwiseIndex) weight += clipWeightCounterClockwise;
+                
+                if (weight > 0f)
+                {
+                    float clipDuration = GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[i].motionIndex);
+                    float clipTimeScale = math.abs(tree.children[i].timeScale);
+                    float weightedClipDuration = weight * clipTimeScale * clipDuration;
+                    
+                    duration += weightedClipDuration;
+                }
+            }
+            
+            return duration;
+        }
+        
+        
+        private static float3 GetBarycentricWeights(float2 clip1Pos, float2 clip2Pos, float2 targetPoint)
+        {
+            // Determinant of the triangle area
+            float denominator = (clip1Pos.x * clip2Pos.y - clip1Pos.y * clip2Pos.x);
 
-                float inverseTotalWeight = 1f / accumulatedWeight;
-                float result             = 0f;
+            float w1 = (targetPoint.x * clip2Pos.y - targetPoint.y * clip2Pos.x) / denominator;
+            float w2 = (targetPoint.y * clip1Pos.x - targetPoint.x * clip1Pos.y) / denominator;
+            float w3 = 1.0f - w1 - w2;
+
+            return new float3(w1, w2, w3);
+        }
+        
+        
+        private static float GetBlendedMotionDurationDirect(ref MecanimControllerBlob controller, ref SkeletonClipSetBlob clips, ReadOnlySpan<MecanimParameter> parameters, ref MecanimControllerBlob.BlendTree tree)
+        {
+            var totalWeight   = 0f;
+            var totalDuration = 0f;
+            for (int i = 0; i < tree.children.Length; i++)
+            {
+                var weight = parameters[tree.parameterIndices[i]].floatParam;
+                if (weight > 0f)
+                {
+                    totalWeight   += weight;
+                    totalDuration += weight * math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller,
+                        ref clips,
+                        parameters,
+                        tree.children[i].motionIndex);
+                }
+            }
+            if (totalWeight <= 0f)
+                return 0f;
+            return totalDuration / totalWeight;
+        }
+
+
+        // Freeform (directional or cartesian)
+        private static float GetBlendedMotionDurationFreeform(ref MecanimControllerBlob controller, ref SkeletonClipSetBlob clips, ReadOnlySpan<MecanimParameter> parameters, ref MecanimControllerBlob.BlendTree tree)
+        {
+            // See https://runevision.com/thesis/rune_skovbo_johansen_thesis.pdf at 6.3 (p58) for details.
+            // Freeform cartesian uses cartesian gradient bands, while freeform directional uses gradient
+            // bands in polar space.
+            var          childCount = tree.children.Length;
+            Span<float>  weights    = stackalloc float[childCount];
+            Span<float2> pips       = stackalloc float2[childCount];
+            Span<bool>   invalids   = stackalloc bool[childCount];
+            invalids.Clear();
+            Span<float> durations = stackalloc float[childCount];
+            durations.Fill(-1f);
+
+            var blendParameters = new float2(parameters[tree.parameterIndices[0]].floatParam, parameters[tree.parameterIndices[1]].floatParam);
+
+            // Precompute the pip vectors, because in freeform directional, the atan2 is pricy.
+            for (int i = 0; i < childCount; i++)
+            {
+                var    p     = blendParameters;
+                var    pi    = tree.children[i].position;
+                var    pmag  = 0f;
+                var    pimag = 0f;
+                float2 pip;
+                if (tree.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D)
+                {
+                    pmag          = math.length(p);
+                    pimag         = math.length(pi);
+                    pip.x         = (pmag - pimag) / (0.5f * (pmag + pimag));
+                    var direction = LatiosMath.ComplexMul(pi, new float2(p.x, -p.y));
+                    pip.y         = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * math.atan2(direction.y, direction.x);
+                }
+                else
+                {
+                    pip = p - pi;
+                }
+                pips[i] = pip;
+            }
+
+            // We try to only sample the child nodes if they have nonzero weights. However, invalid nodes could potentially
+            // result in zero-weight nodes turning into nonzero weight nodes. So we need to restart whenever we detect invalid
+            // nodes, which should be rare.
+            bool  foundInvalid      = false;
+            float accumulatedWeight = 0f;
+            while (!foundInvalid)
+            {
+                foundInvalid = false;
+                // Reset the weights
+                weights.Fill(float.MaxValue);
+                accumulatedWeight = 0f;
+
                 for (int i = 0; i < childCount; i++)
                 {
                     if (invalids[i])
                         continue;
-                    result += inverseTotalWeight * weights[i] * durations[i];
-                }
-                return result;
-            }
-        }
 
+                    var pip = pips[i];
+
+                    for (int j = 0; j < childCount; j++)
+                    {
+                        if (invalids[j] || j == i)
+                            continue;
+
+                        var pipj   = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
+                        var h      = math.max(0, 1 - math.dot(pip, pipj.xy) * pipj.z);
+                        weights[i] = math.min(weights[i], h);
+                    }
+
+                    accumulatedWeight += weights[i];
+
+                    // Populate child node durations we haven't acquired yet
+                    if (weights[i] > 0f && durations[i] < -0.5f)
+                    {
+                        durations[i] = math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[i].motionIndex);
+                        if (durations[i] <= 0f)
+                        {
+                            foundInvalid = true;
+                            invalids[i]  = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            float inverseTotalWeight = 1f / accumulatedWeight;
+            float result             = 0f;
+            for (int i = 0; i < childCount; i++)
+            {
+                if (invalids[i])
+                    continue;
+                result += inverseTotalWeight * weights[i] * durations[i];
+            }
+            return result;
+        }
+        
         // Todo: Root motion and normal sampling
     }
 }
