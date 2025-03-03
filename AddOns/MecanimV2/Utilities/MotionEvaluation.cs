@@ -118,23 +118,11 @@ namespace Latios.MecanimV2
                     {
                         float angle = tree.pipjs[i].x;
                         float diff  = angle - targetAngle;
-
-                        // Todo: I don't think this expression is correct.
-                        // Suppose angle is -pi + eps and targetAngle is pi - eps:
-                        // diff = -2pi + 2eps
-                        // diff + pi = -pi + 2eps = (-pi + 2eps) % 2pi
-                        // Therefore, (diff + pi) % (2pi) - pi = -2pi + 2eps which is outside the range.
-                        // If the clips are ordered in a counter-clockwise order,
-                        // we could replace this loop with the 1D algorithm to find the before and after.
-                        // And in the case we are below the first or after the last,
-                        // then we know we are between the last and the first.
-                        //
+                        
                         // Normalize the angle difference to be between [-π, π]
-                        diff = (diff + math.PI) % (2 * math.PI) - math.PI;
-
-                        // Todo: Should this be diff is zero (we align perfectly with a child position)
-                        // we'll end up ignoring the child we align with and sampling the two other clips around it.
-                        if (diff > 0 && diff < minCounterClockwiseDifference)
+                        diff = Modulo(diff + math.PI, 2 * math.PI) - math.PI;
+                        
+                        if (diff >= 0 && diff < minCounterClockwiseDifference)
                         {
                             minCounterClockwiseDifference = diff;
                             counterClockwiseIndex         = i;
@@ -203,6 +191,11 @@ namespace Latios.MecanimV2
             }
 
             return duration;
+        }
+        
+        public static float Modulo(float n, float m)
+        {
+            return ((n % m) + m) % m;
         }
 
         private static float3 GetBarycentricWeights(float2 clip1Pos, float2 clip2Pos, float2 targetPoint)
