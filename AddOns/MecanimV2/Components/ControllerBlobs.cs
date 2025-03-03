@@ -232,7 +232,7 @@ namespace Latios.MecanimV2
             // with parent sub-state machine indices. Each state would then index a sub-state machine and we'd walk back to the root.
             // Such a strategy would still support our flattened representation.
             public BlobArray<Transition> anyStateTransitions;
-            
+
             // These only have destination state indices and conditions. There's no timing. And we only care about this on the very first update.
             // In baking, we need to identify the default transition and add it at the end, after all other entry transitions.
             // Also in baking, we should convert each state -> exit -> entry -> state permutation to direct state -> state transitions.
@@ -252,7 +252,8 @@ namespace Latios.MecanimV2
             public BlendTreeType    blendTreeType;
             public BlobArray<Child> children;
             public BlobArray<short> parameterIndices;
-            // Sized by (childCount - 1)^2, z is 1 / lengthSq
+            // For freeform trees, sized by (childCount - 1)^2, z is 1 / lengthSq
+            // For simple directional, sized by childCount, x is atan2(childPosition), y at index 0 is the index of the center child if any (asint)
             public BlobArray<float3> pipjs;
 
             public enum BlendTreeType
