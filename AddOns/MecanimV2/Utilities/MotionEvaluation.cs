@@ -6,6 +6,7 @@ namespace Latios.MecanimV2
 {
     public static class MotionEvaluation
     {
+        #region API
         public static float GetBlendedMotionDuration(ref MecanimControllerBlob controller,
                                                      ref SkeletonClipSetBlob clips,
                                                      ReadOnlySpan<MecanimParameter>    parameters,
@@ -34,6 +35,54 @@ namespace Latios.MecanimV2
             }
         }
 
+        public struct ClipResult
+        {
+            public float  currentLoopTime;
+            public float  previousLoopTime;
+            public float  weight;
+            public ushort clipIndex;
+            public bool   mirror;
+        }
+
+        public interface IProcessor
+        {
+            void Execute(in ClipResult result);
+        }
+
+        public static void Evaluate<T>(float motionNormalizedStartTimeWithLoops,
+                                       float motionNormalizedEndTimeWithLoops,
+                                       ref MecanimControllerBlob controller,
+                                       ref SkeletonClipSetBlob clips,
+                                       ReadOnlySpan<MecanimParameter>    parameters,
+                                       MecanimControllerBlob.MotionIndex motion,
+                                       ref T processor)
+            where T : unmanaged, IProcessor
+        {
+            // Todo:
+            throw new NotImplementedException();
+        }
+        #endregion
+
+        #region Utility
+        private static float Modulo(float n, float m)
+        {
+            return ((n % m) + m) % m;
+        }
+
+        private static float3 GetBarycentricWeights(float2 clip1Pos, float2 clip2Pos, float2 targetPoint)
+        {
+            // Determinant of the triangle area
+            float denominator = (clip1Pos.x * clip2Pos.y - clip1Pos.y * clip2Pos.x);
+
+            float w1 = (targetPoint.x * clip2Pos.y - targetPoint.y * clip2Pos.x) / denominator;
+            float w2 = (targetPoint.y * clip1Pos.x - targetPoint.x * clip1Pos.y) / denominator;
+            float w3 = 1.0f - w1 - w2;
+
+            return new float3(w1, w2, w3);
+        }
+        #endregion
+
+        #region Durations
         private static float GetBlendedMotionDurationSimple1D(ref MecanimControllerBlob controller,
                                                               ref SkeletonClipSetBlob clips,
                                                               ReadOnlySpan<MecanimParameter>      parameters,
@@ -84,10 +133,10 @@ namespace Latios.MecanimV2
         }
 
         // Todo: This needs to be revisited at some point if we want this to be robust.
-        public static float GetBlendedMotionDurationSimpleDirectional2D(ref MecanimControllerBlob controller,
-                                                                        ref SkeletonClipSetBlob clips,
-                                                                        ReadOnlySpan<MecanimParameter>      parameters,
-                                                                        ref MecanimControllerBlob.BlendTree tree)
+        private static float GetBlendedMotionDurationSimpleDirectional2D(ref MecanimControllerBlob controller,
+                                                                         ref SkeletonClipSetBlob clips,
+                                                                         ReadOnlySpan<MecanimParameter>      parameters,
+                                                                         ref MecanimControllerBlob.BlendTree tree)
         {
             var childCount      = tree.children.Length;
             var blendParameters = new float2(parameters[tree.parameterIndices[0]].floatParam, parameters[tree.parameterIndices[1]].floatParam);
@@ -118,10 +167,10 @@ namespace Latios.MecanimV2
                     {
                         float angle = tree.pipjs[i].x;
                         float diff  = angle - targetAngle;
-                        
+
                         // Normalize the angle difference to be between [-π, π]
                         diff = Modulo(diff + math.PI, 2 * math.PI) - math.PI;
-                        
+
                         if (diff >= 0 && diff < minCounterClockwiseDifference)
                         {
                             minCounterClockwiseDifference = diff;
@@ -191,23 +240,6 @@ namespace Latios.MecanimV2
             }
 
             return duration;
-        }
-        
-        public static float Modulo(float n, float m)
-        {
-            return ((n % m) + m) % m;
-        }
-
-        private static float3 GetBarycentricWeights(float2 clip1Pos, float2 clip2Pos, float2 targetPoint)
-        {
-            // Determinant of the triangle area
-            float denominator = (clip1Pos.x * clip2Pos.y - clip1Pos.y * clip2Pos.x);
-
-            float w1 = (targetPoint.x * clip2Pos.y - targetPoint.y * clip2Pos.x) / denominator;
-            float w2 = (targetPoint.y * clip1Pos.x - targetPoint.x * clip1Pos.y) / denominator;
-            float w3 = 1.0f - w1 - w2;
-
-            return new float3(w1, w2, w3);
         }
 
         // Freeform (directional or cartesian)
@@ -300,8 +332,11 @@ namespace Latios.MecanimV2
                 return 0f;
             return totalDuration / totalWeight;
         }
+        #endregion
 
-        // Todo: Root motion and normal sampling
+        #region Clips
+        // Todo: All blend tree types for evaluation
+        #endregion
     }
 }
 

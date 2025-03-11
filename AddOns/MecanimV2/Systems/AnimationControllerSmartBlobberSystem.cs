@@ -637,11 +637,13 @@ namespace Latios.MecanimV2.Authoring.Systems
             int childCount            = 0;
 
             // Bake blend tree parameters for non-direct types
+            bool useThresholds = false;
             if (blendTreeBlob.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.Simple1D)
             {
                 animatorController.parameters.TryGetParameter(blendTree.blendParameter, out short conditionParameterIndex);
                 parameterIndices[parameterIndicesCount] = conditionParameterIndex;
                 parameterIndicesCount++;
+                useThresholds = true;
             }
             else if (blendTreeBlob.blendTreeType != MecanimControllerBlob.BlendTree.BlendTreeType.Direct)
             {
@@ -661,9 +663,8 @@ namespace Latios.MecanimV2.Authoring.Systems
 
                 childBlob.cycleOffset = childMotion.cycleOffset;
                 childBlob.mirrored    = childMotion.mirror;
-                childBlob.position    = childMotion.position;
+                childBlob.position    = useThresholds ? childMotion.threshold : childMotion.position;
                 childBlob.timeScale   = childMotion.timeScale;
-                childBlob.threshold   = childMotion.threshold;
 
                 // TODO: childBlob.isLooping  // This doesn't seem to be available in childMotion data
 
@@ -849,7 +850,7 @@ namespace Latios.MecanimV2.Authoring.Systems
             return builder;
         }
 
-        private static void PopulateLayersAffectingStateMachinesTimings(
+        private static unsafe void PopulateLayersAffectingStateMachinesTimings(
             AnimatorController animatorController,
             NativeHashMap<short, short> owningLayerToStateMachine,
             ref BlobBuilderArray<MecanimControllerBlob.StateMachine> stateMachinesBuilder,
@@ -884,6 +885,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                 }
 
                 stateMachinesBuilder[owningLayerToStateMachine[i]] = stateMachineBlob;
+                NativeSortExtension.Sort((short*)stateMachinesBuilder.GetUnsafePtr(), stateMachinesBuilder.Length);
             }
         }
 

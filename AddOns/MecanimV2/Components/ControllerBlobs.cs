@@ -222,6 +222,7 @@ namespace Latios.MecanimV2
         public struct StateMachine
         {
             // These are only the primary state machine layer and sync layers whose weights affect timings.
+            // The indices are sorted.
             public BlobArray<short> influencingLayers;
             // Note: We flatten out sub-state machines.
             public BlobArray<State> states;
@@ -251,7 +252,7 @@ namespace Latios.MecanimV2
         {
             public BlendTreeType    blendTreeType;
             public BlobArray<Child> children;
-            public BlobArray<short> parameterIndices;
+            public BlobArray<short> parameterIndices;  // Todo: Make two shorts and use Child.position to store parameters for direct blending?
             // For freeform trees, sized by (childCount - 1)^2, z is 1 / lengthSq
             // For simple directional, sized by childCount, x is atan2(childPosition), y at index 0 is the index of the center child if any (asint)
             public BlobArray<float3> pipjs;
@@ -270,7 +271,6 @@ namespace Latios.MecanimV2
                 public float2      position;
                 public float       cycleOffset;
                 public float       timeScale;
-                public float       threshold;
                 public MotionIndex motionIndex;
                 public ushort      packedFlags;
                 public bool isLooping  // I don't think we can support this
