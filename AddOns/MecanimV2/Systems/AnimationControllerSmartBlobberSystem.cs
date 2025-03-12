@@ -716,8 +716,8 @@ namespace Latios.MecanimV2.Authoring.Systems
                 // See https://runevision.com/thesis/rune_skovbo_johansen_thesis.pdf at 6.3 (p58) for details.
                 // Because atan2 is expensive at runtime for FreeformDirectional2D, and we need to do it with O(n^2) complexity,
                 // we precompute the results in the blob.
-                var pipjBuilder = builder.Allocate(ref blendTreeBlob.pipjs, (childrenBuilder.Length - 1) * (childrenBuilder.Length - 1));
-                for (int i = 0; i < childCount; i++)
+                var pipjBuilder = builder.Allocate(ref blendTreeBlob.pipjs, childrenBuilder.Length * (childrenBuilder.Length - 1));
+                for (int i = 0; i < childCount - 1; i++)
                 {
                     var pi    = childrenBuilder[i].position;
                     var pimag = math.length(pi);
