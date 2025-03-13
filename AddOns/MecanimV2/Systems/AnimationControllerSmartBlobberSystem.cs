@@ -864,16 +864,17 @@ namespace Latios.MecanimV2.Authoring.Systems
                     continue;
 
                 int influencingLayersCount = layersInfluencingTimingsByAffectedLayer.CountValuesForKey(i);
-                if (influencingLayersCount == 0)
-                    continue;
 
                 // Get associated state machine blob
-                ref var stateMachineBlob = ref stateMachinesBuilder[owningLayerToStateMachine[i]];
+                var stateMachineForThisLayer = owningLayerToStateMachine[i];
+                ref var stateMachineBlob = ref stateMachinesBuilder[stateMachineForThisLayer];
 
                 // initialize the blob array for layers affecting timings on the state machine blob
-                BlobBuilderArray<short> influencingLayersBuilder = builder.Allocate(ref stateMachineBlob.influencingLayers, influencingLayersCount);
+                BlobBuilderArray<short> influencingLayersBuilder = builder.Allocate(ref stateMachineBlob.influencingLayers, influencingLayersCount + 1);
 
-                var indexInArrayOfInfluencingLayers = 0;
+                influencingLayersBuilder[0] = i;
+                
+                var indexInArrayOfInfluencingLayers = 1;
                 if (layersInfluencingTimingsByAffectedLayer.TryGetFirstValue(i, out short influencingLayer, out NativeParallelMultiHashMapIterator<short> it))
                 {
                     do
@@ -884,8 +885,9 @@ namespace Latios.MecanimV2.Authoring.Systems
                     while (layersInfluencingTimingsByAffectedLayer.TryGetNextValue(out influencingLayer, ref it));
                 }
 
-                stateMachinesBuilder[owningLayerToStateMachine[i]] = stateMachineBlob;
-                NativeSortExtension.Sort((short*)stateMachinesBuilder.GetUnsafePtr(), stateMachinesBuilder.Length);
+                NativeSortExtension.Sort((short*)influencingLayersBuilder.GetUnsafePtr(), influencingLayersBuilder.Length);
+                
+                stateMachinesBuilder[stateMachineForThisLayer] = stateMachineBlob;
             }
         }
 

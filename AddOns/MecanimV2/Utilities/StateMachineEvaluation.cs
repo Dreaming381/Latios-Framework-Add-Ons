@@ -4,7 +4,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
-
 using Blob = Latios.MecanimV2.MecanimControllerBlob;
 
 namespace Latios.MecanimV2
@@ -56,7 +55,7 @@ namespace Latios.MecanimV2
                                     ref SkeletonClipSetBlob clipsBlob,
                                     int stateMachineIndex,
                                     float scaledDeltaTime,
-                                    ReadOnlySpan<float>                 allLayerWeights,
+                                    ReadOnlySpan<LayerWeights>          allLayerWeights,
                                     ReadOnlySpan<MecanimParameter>      parameters,
                                     Span<BitField64>                    triggersToReset,
                                     Span<StatePassage>                  outputPassages,
@@ -91,7 +90,7 @@ namespace Latios.MecanimV2
                 bool  hasInfluencer   = false;
                 for (int i = stateMachineBlob.influencingLayers[targetIndex]; i >= stateMachineBlob.influencingLayers[0]; i--)
                 {
-                    var weight = allLayerWeights[i];
+                    var weight = allLayerWeights[i].weight;
                     if (i == stateMachineBlob.influencingLayers[targetIndex])
                     {
                         influencingLayerRelativeWeights[targetIndex] = weight * weightRemaining;
@@ -942,7 +941,7 @@ namespace Latios.MecanimV2
                             }
                             break;
                     }
-                    if (index < count)
+                    if (index >= count)
                     {
                         index = -1;
                         arrayIndex++;

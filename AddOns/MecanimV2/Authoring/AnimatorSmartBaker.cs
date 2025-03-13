@@ -74,15 +74,23 @@ namespace Latios.MecanimV2.Authoring
                 parametersBuffer.Add(parameterData);
             }
             
-            // Bake avatar masks
-            var avatarMasks = new NativeList<UnityObjectRef<AvatarMask>>(1,Allocator.Temp);
+            // Bake avatar masks and create StateMachines states buffer
             var layers = baseAnimatorControllerRef.controller.layers;
+            
+            var avatarMasks = new NativeList<UnityObjectRef<AvatarMask>>(1,Allocator.Temp);
+            var statesBuffer = baker.AddBuffer<MecanimStateMachineActiveStates>(entity);
             
             foreach (var layer in layers)
             {
-                if (layer.avatarMask == null) continue;
-                
-                avatarMasks.Add(layer.avatarMask);
+                if (layer.avatarMask != null)
+                {
+                    avatarMasks.Add(layer.avatarMask);
+                }
+
+                if (layer.syncedLayerIndex == -1)
+                {
+                    statesBuffer.Add(MecanimStateMachineActiveStates.CreateInitialState());
+                }
             }
             
             // Add build buffer element for layer weights if there is more than one layer
@@ -90,9 +98,10 @@ namespace Latios.MecanimV2.Authoring
             {
                 DynamicBuffer<LayerWeights> weights = baker.AddBuffer<LayerWeights>(entity);
 
-                foreach (var layer in layers)
+                for (var index = 0; index < layers.Length; index++)
                 {
-                    weights.Add(new LayerWeights { weight = layer.defaultWeight });
+                    var layer = layers[index];
+                    weights.Add(new LayerWeights { weight = index == 0 ? 1 : layer.defaultWeight });
                 }
             }
 
