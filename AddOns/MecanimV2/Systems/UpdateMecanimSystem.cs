@@ -42,7 +42,7 @@ namespace Latios.Mecanim.AddOns.MecanimV2.Systems
 
             public void Execute(ref MecanimController mecanimController, DynamicBuffer<MecanimStateMachineActiveStates> stateMachineActiveStates, DynamicBuffer<LayerWeights> layerWeights, DynamicBuffer<MecanimParameter> parameters)
             {
-                Span<BitField64> localTriggersToReset = stackalloc BitField64[parameters.Length / 64 + 1];
+                Span<BitField64> localTriggersToReset = stackalloc BitField64[1 + ((parameters.Length-1) >> 6)];
                 Span<StateMachineEvaluation.StatePassage> statePassages = stackalloc StateMachineEvaluation.StatePassage[8];
                 
                 for (var i = 0; i < stateMachineActiveStates.Length; i++)

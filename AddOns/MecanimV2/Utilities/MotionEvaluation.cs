@@ -286,6 +286,9 @@ namespace Latios.MecanimV2
                 // Evaluate weights using dot(pip, pipj)
                 for (int j = 0; j < childCount; j++)
                 {
+                    // TODO: skipping i==j fixes out of range exceptions for now (we don't store pipjs values for i==j in tree.pipjs),
+                    // but might be completely wrong to just skip them.
+                    if (i == j) continue; 
                     var pipj   = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
                     var h      = math.max(0, 1 - math.dot(pip, pipj.xy) * pipj.z);
                     weights[i] = math.min(weights[i], h);
