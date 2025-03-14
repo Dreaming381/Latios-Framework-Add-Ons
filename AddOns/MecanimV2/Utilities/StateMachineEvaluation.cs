@@ -1,10 +1,10 @@
 using System;
+using Blob = Latios.MecanimV2.MecanimControllerBlob;
 using Latios.Kinemation;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
-using Blob = Latios.MecanimV2.MecanimControllerBlob;
 
 namespace Latios.MecanimV2
 {
@@ -154,8 +154,19 @@ namespace Latios.MecanimV2
                             }
 
                             // Check if our timestep in state wraps the exit time
-                            var exitTime = transition.normalizedExitTime;
-                            if (currentStateDuration != 0f && (math.abs(state.currentStateNormalizedTime) > exitTime || math.abs(stateNormalizedEndTime) < exitTime))
+                            var   exitTime = transition.normalizedExitTime;
+                            float currentTimeComparison, endTimeComparison;
+                            if (exitTime > 1f)
+                            {
+                                currentTimeComparison = math.abs(state.currentStateNormalizedTime);
+                                endTimeComparison     = math.abs(stateNormalizedEndTime);
+                            }
+                            else
+                            {
+                                currentTimeComparison = math.frac(math.abs(state.currentStateNormalizedTime));
+                                endTimeComparison     = math.frac(math.abs(stateNormalizedEndTime));
+                            }
+                            if (currentStateDuration != 0f && (currentTimeComparison >= exitTime || endTimeComparison < exitTime))
                                 continue;
                         }
 
@@ -167,7 +178,9 @@ namespace Latios.MecanimV2
                         if (transition.hasExitTime)
                         {
                             // Compute how much realtime we spent in the state, and then figure out its fraction relative to our scaledDeltaTime
-                            var stateTime              = transition.normalizedExitTime - math.abs(state.currentStateNormalizedTime);
+                            var stateTime = transition.normalizedExitTime - math.select(math.abs(state.currentStateNormalizedTime),
+                                                                                        math.frac(math.abs(state.currentStateNormalizedTime)),
+                                                                                        transition.normalizedExitTime <= 1f);
                             var stateDeltaTime         = stateTime * currentStateDuration;
                             fractionOfDeltaTimeInState = stateDeltaTime / math.abs(scaledDeltaTime);
                         }
@@ -189,7 +202,7 @@ namespace Latios.MecanimV2
 
                         // Update the state machine state
                         state.currentStateNormalizedTime = passage.currentStateEndTime;
-                        state.nextStateNormalizedTime    = 0f;
+                        state.nextStateNormalizedTime    = transition.normalizedOffset;
                         state.transitionNormalizedTime   = 0f;
                         state.nextStateTransitionIndex   = matchedTransitionIndex;
 
@@ -316,10 +329,23 @@ namespace Latios.MecanimV2
                                     scaledStateTimeDelta *= parameters[nextStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 nextStateEndTime          = state.nextStateNormalizedTime + scaledStateTimeDelta;
                             }
-                            bool missedCurrentExitTime = math.abs(state.currentStateNormalizedTime) > transition.normalizedExitTime || math.abs(
-                                currentStateEndTime) < transition.normalizedExitTime;
-                            bool missedNextExitTime = math.abs(state.nextStateNormalizedTime) > transition.normalizedExitTime ||
-                                                      math.abs(nextStateEndTime) < transition.normalizedExitTime;
+                            float currentTimeComparison, endCurrentTimeComparison, nextTimeComparison, endNextTimeComparison;
+                            if (transition.normalizedExitTime > 1f)
+                            {
+                                currentTimeComparison    = math.abs(state.currentStateNormalizedTime);
+                                endCurrentTimeComparison = math.abs(currentStateEndTime);
+                                nextTimeComparison       = math.abs(state.nextStateNormalizedTime);
+                                endNextTimeComparison    = math.abs(nextStateEndTime);
+                            }
+                            else
+                            {
+                                currentTimeComparison    = math.frac(math.abs(state.currentStateNormalizedTime));
+                                endCurrentTimeComparison = math.frac(math.abs(currentStateEndTime));
+                                nextTimeComparison       = math.frac(math.abs(state.nextStateNormalizedTime));
+                                endNextTimeComparison    = math.frac(math.abs(nextStateEndTime));
+                            }
+                            bool missedCurrentExitTime = currentTimeComparison >= transition.normalizedExitTime || endCurrentTimeComparison < transition.normalizedExitTime;
+                            bool missedNextExitTime    = nextTimeComparison >= transition.normalizedExitTime || endNextTimeComparison < transition.normalizedExitTime;
                             bool missedExitTime;
                             if (matchedInterruption.from == MatchedInterrupt.From.Any)
                                 missedExitTime = missedCurrentExitTime && missedNextExitTime;
@@ -370,8 +396,10 @@ namespace Latios.MecanimV2
                             // We also need to know which state time to use to find the normalized delta time
                             // consumed between the state time and the exit time. We'll calculate both normalized
                             // times first.
-                            float currentFractionBeforeExit = math.unlerp(state.currentStateNormalizedTime, currentStateEndTime, transition.normalizedExitTime);
-                            float nextFractionBeforeExit    = math.unlerp(state.nextStateNormalizedTime, nextStateEndTime, transition.normalizedExitTime);
+                            var   currentLoopback           = math.abs(state.currentStateNormalizedTime) - currentTimeComparison;
+                            var   nextLoopback              = math.abs(state.nextStateNormalizedTime) - nextTimeComparison;
+                            float currentFractionBeforeExit = math.unlerp(currentTimeComparison, currentStateEndTime - currentLoopback, transition.normalizedExitTime);
+                            float nextFractionBeforeExit    = math.unlerp(nextTimeComparison, nextStateEndTime - nextLoopback, transition.normalizedExitTime);
 
                             if (matchedInterruption.from == MatchedInterrupt.From.Any)
                             {
@@ -425,7 +453,7 @@ namespace Latios.MecanimV2
 
                         // Update the state machine state to our new interrupted state without any active transitions
                         state.currentStateIndex          = transition.destinationStateIndex;
-                        state.currentStateNormalizedTime = 0f;
+                        state.currentStateNormalizedTime = transition.normalizedOffset;
                         state.nextStateNormalizedTime    = 0f;
                         state.transitionNormalizedTime   = 0f;
                         state.nextStateTransitionIndex   = Blob.TransitionIndex.Null;
@@ -475,10 +503,37 @@ namespace Latios.MecanimV2
                         normalizedDeltaTimeRemaining -= fractionOfDeltaTimeInState;
                         break;
                     }
-
                     if (!state.nextStateTransitionIndex.invalid)
                     {
                         // We didn't erase our transition, which means there wasn't an interruption.
+                        // First, our transition duration might be zero, in which we fast-path to transitioning back out
+                        if (activeTransitionBlob.duration == 0f)
+                        {
+                            // Record the passage for the dual state configuration we are leaving by expiration
+                            var passage = new StatePassage
+                            {
+                                currentState               = state.currentStateIndex,
+                                nextState                  = activeTransitionBlob.destinationStateIndex,
+                                currentStateStartTime      = state.currentStateNormalizedTime,
+                                currentStateEndTime        = state.currentStateNormalizedTime,
+                                fractionOfDeltaTimeInState = 0f,
+                                nextStateStartTime         = state.nextStateNormalizedTime,
+                                nextStateEndTime           = state.nextStateNormalizedTime,
+                                transitionProgress         = 1f,
+                            };
+                            outputPassages[outputPassagesCount] = passage;
+                            outputPassagesCount++;
+
+                            // Update the state machine state to our new interrupted state without any active transitions
+                            state.currentStateIndex          = nextStateBlob.stateIndexInStateMachine;
+                            state.currentStateNormalizedTime = state.nextStateNormalizedTime;
+                            state.nextStateNormalizedTime    = 0f;
+                            state.transitionNormalizedTime   = 0f;
+                            state.nextStateTransitionIndex   = Blob.TransitionIndex.Null;
+
+                            continue;
+                        }
+
                         // Determine our end times and our transition time.
                         if (currentStateDuration < 0f)
                         {
@@ -514,7 +569,7 @@ namespace Latios.MecanimV2
                         }
                         float transitionTime;
                         if (activeTransitionBlob.usesRealtimeDuration)
-                            transitionTime = state.transitionNormalizedTime + normalizedDeltaTimeRemaining * math.abs(scaledDeltaTime);
+                            transitionTime = state.transitionNormalizedTime + normalizedDeltaTimeRemaining * math.abs(scaledDeltaTime) / activeTransitionBlob.duration;
                         else
                             transitionTime = math.unlerp(activeTransitionBlob.duration, 1f, math.abs(currentStateEndTime));
 
@@ -543,7 +598,7 @@ namespace Latios.MecanimV2
                             outputPassages[outputPassagesCount] = passage;
                             outputPassagesCount++;
 
-                            // Update the state machine state to our new interrupted state without any active transitions
+                            // Update the state machine state to complete our transition
                             state.currentStateIndex          = nextStateBlob.stateIndexInStateMachine;
                             state.currentStateNormalizedTime = nextStateEndTime;
                             state.nextStateNormalizedTime    = 0f;
@@ -567,10 +622,15 @@ namespace Latios.MecanimV2
                                 fractionOfDeltaTimeInState = normalizedDeltaTimeRemaining,
                                 nextStateStartTime         = state.nextStateNormalizedTime,
                                 nextStateEndTime           = nextStateEndTime,
-                                transitionProgress         = 1f,
+                                transitionProgress         = transitionTime,
                             };
                             outputPassages[outputPassagesCount] = passage;
                             outputPassagesCount++;
+
+                            // Update the state machine state times
+                            state.currentStateNormalizedTime = currentStateEndTime;
+                            state.nextStateNormalizedTime    = nextStateEndTime;
+                            state.transitionNormalizedTime   = transitionTime;
 
                             // Accumulate time in our inertial blend, and consume the remaining deltaTime
                             newInertialBlendProgressRealtime += normalizedDeltaTimeRemaining * scaledDeltaTime;

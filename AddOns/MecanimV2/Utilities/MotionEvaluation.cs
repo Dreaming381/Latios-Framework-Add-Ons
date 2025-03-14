@@ -102,9 +102,14 @@ namespace Latios.MecanimV2
             // Find the first child at or after our parameter
             int afterIndex;
             if (beforeIndex >= 0 && tree.children[beforeIndex].position.x == parameter)
-                afterIndex = beforeIndex;
-            else
-                afterIndex = beforeIndex + 1;
+            {
+                // Return the result now to avoid duplicating fetching the child motion.
+                // Also, duplicate values breaks math.remap below.
+                var timeScale = math.abs(tree.children[beforeIndex].timeScale);
+                return timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
+            }
+
+            afterIndex = beforeIndex + 1;
 
             // Try to get the child before's duration.
             float beforeDuration = 0f;
@@ -286,9 +291,8 @@ namespace Latios.MecanimV2
                 // Evaluate weights using dot(pip, pipj)
                 for (int j = 0; j < childCount; j++)
                 {
-                    // TODO: skipping i==j fixes out of range exceptions for now (we don't store pipjs values for i==j in tree.pipjs),
-                    // but might be completely wrong to just skip them.
-                    if (i == j) continue; 
+                    if (i == j)
+                        continue;
                     var pipj   = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
                     var h      = math.max(0, 1 - math.dot(pip, pipj.xy) * pipj.z);
                     weights[i] = math.min(weights[i], h);

@@ -112,8 +112,8 @@ namespace Latios.MecanimV2.Authoring.Systems
             if (transition is AnimatorStateTransition animatorStateTransition)
             {
                 blobTransition.hasExitTime              = animatorStateTransition.hasExitTime;
-                blobTransition.normalizedExitTime       = animatorStateTransition.exitTime / animatorStateTransition.duration;
-                blobTransition.normalizedOffset         = animatorStateTransition.offset / animatorStateTransition.duration;
+                blobTransition.normalizedExitTime       = animatorStateTransition.exitTime;
+                blobTransition.normalizedOffset         = animatorStateTransition.offset;
                 blobTransition.duration                 = animatorStateTransition.duration;
                 blobTransition.interruptionSource       = (MecanimControllerBlob.Transition.InterruptionSource)animatorStateTransition.interruptionSource;
                 blobTransition.usesOrderedInterruptions = animatorStateTransition.orderedInterruption;
@@ -867,13 +867,13 @@ namespace Latios.MecanimV2.Authoring.Systems
 
                 // Get associated state machine blob
                 var stateMachineForThisLayer = owningLayerToStateMachine[i];
-                ref var stateMachineBlob = ref stateMachinesBuilder[stateMachineForThisLayer];
+                ref var stateMachineBlob         = ref stateMachinesBuilder[stateMachineForThisLayer];
 
                 // initialize the blob array for layers affecting timings on the state machine blob
                 BlobBuilderArray<short> influencingLayersBuilder = builder.Allocate(ref stateMachineBlob.influencingLayers, influencingLayersCount + 1);
 
                 influencingLayersBuilder[0] = i;
-                
+
                 var indexInArrayOfInfluencingLayers = 1;
                 if (layersInfluencingTimingsByAffectedLayer.TryGetFirstValue(i, out short influencingLayer, out NativeParallelMultiHashMapIterator<short> it))
                 {
@@ -886,7 +886,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                 }
 
                 NativeSortExtension.Sort((short*)influencingLayersBuilder.GetUnsafePtr(), influencingLayersBuilder.Length);
-                
+
                 stateMachinesBuilder[stateMachineForThisLayer] = stateMachineBlob;
             }
         }
