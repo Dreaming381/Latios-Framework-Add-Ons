@@ -308,6 +308,64 @@ namespace Latios.MecanimV2
 
             internal const float kFreeformDirectionalBias = 2f;
         }
+        
+        
+        internal short GetLayerIndex(FixedString128Bytes layerName)
+        {
+            for (short i = 0; i < layers.Length; i++)
+            {
+                if (layers[i].name.Equals(layerName)) return i;
+            }
+            return -1;
+        }
+        
+        internal short GetStateMachineIndex(FixedString128Bytes layerName)
+        {
+            return layers[GetLayerIndex(layerName)].stateMachineIndex;
+        }
+        
+        internal short GetStateIndex(short stateMachineIndex, FixedString128Bytes fullStateName)
+        {
+            ref var stateMachine = ref stateMachines[stateMachineIndex];
+            
+            for (short i = 0; i < stateMachine.stateNameHashes.Length; i++)
+            {
+                if (fullStateName.Equals(stateMachine.stateNames[i])) return i;
+            }
+            return -1;
+        }
+        
+        internal short GetStateIndex(short stateMachineIndex, int fullStateNameHash)
+        {
+
+            ref var stateMachine = ref stateMachines[stateMachineIndex];
+            
+            for (short i = 0; i < stateMachine.stateNameHashes.Length; i++)
+            {
+                if (fullStateNameHash == stateMachine.stateNameHashes[i]) return i;
+            }
+            return -1;
+        }
+        
+        
+        
+        internal short GetParameterIndex(FixedString128Bytes parameterName)
+        {
+            for (short  i = 0; i < parameterNames.Length; i++)
+            {
+                if (parameterName.Equals(parameterNames[i])) return i;
+            }
+            return -1;
+        }
+        
+        internal short GetParameterIndex(int parameterNameHash)
+        {
+            for (short  i = 0; i < parameterNameHashes.Length; i++)
+            {
+                if (parameterNameHash == parameterNameHashes[i]) return i;
+            }
+            return -1;
+        }
     }
 }
 

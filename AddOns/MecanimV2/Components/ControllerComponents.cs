@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Latios.Kinemation;
+using Unity.Collections;
 using Unity.Entities;
 
 namespace Latios.MecanimV2
@@ -17,6 +18,46 @@ namespace Latios.MecanimV2
         /// The time since the last inertial blend start, or -1f if no active inertial blending is happening.
         /// </summary>
         public float realtimeInInertialBlend;
+
+        /**
+         * This is an expensive call. Please cache and re-use the result.
+         * fullStateName must include all parent state machines names separated by dots. Example: "MySubMachine.MyChildSubMachine.Jump"
+         */
+        public StateHandle GetStateHandle(FixedString128Bytes layerName, FixedString128Bytes fullStateName)
+        {
+            var stateMachineIndex = controllerBlob.Value.GetStateMachineIndex(layerName);
+            var stateIndex = controllerBlob.Value.GetStateIndex(stateMachineIndex, fullStateName);
+            return new StateHandle { StateMachineIndex = stateMachineIndex, StateIndex = stateIndex };
+        }
+        
+        /**
+         * This is an expensive method. Please cache and re-use the result.
+         * fullStateName must include all parent state machines names separated by dots and be hashed using GetHashCode()
+         * Example: "MySubMachine.MyChildSubMachine.Jump".GetHashCode()
+         */
+        public StateHandle GetStateHandle(FixedString128Bytes layerName, int fullStateNameHashCode)
+        {
+            var stateMachineIndex = controllerBlob.Value.GetStateMachineIndex(layerName);
+            var stateIndex = controllerBlob.Value.GetStateIndex(stateMachineIndex, fullStateNameHashCode);
+            return new StateHandle { StateMachineIndex = stateMachineIndex, StateIndex = stateIndex };
+        }
+        
+        /**
+         * This is an expensive method. Please cache and re-use the result.
+         */
+        public short GetLayerIndex(FixedString128Bytes layerName) => controllerBlob.Value.GetLayerIndex(layerName);
+        
+        /**
+         * This is an expensive method. Please cache and re-use the result.
+         */
+        public short GetParameterIndex(FixedString128Bytes parameterName) => controllerBlob.Value.GetParameterIndex(parameterName);
+        public short GetParameterIndex(int parameterNameHashCode) => controllerBlob.Value.GetParameterIndex(parameterNameHashCode);
+    }
+
+    public struct StateHandle
+    {
+        public short StateMachineIndex;
+        public short StateIndex;
     }
 
     /// <summary>
