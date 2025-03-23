@@ -37,8 +37,8 @@ namespace Latios.MecanimV2
 
         public struct ClipResult
         {
-            public float  currentLoopTime;
-            public float  previousLoopTime;
+            public float  currentNormalizedLoopTime;
+            public float  previousNormalizedLoopTime;
             public float  weight;
             public ushort clipIndex;
             public bool   mirror;
