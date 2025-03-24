@@ -154,7 +154,7 @@ namespace Latios.MecanimV2
                                      bool isFirstUpdate)
         {
             ref var layer = ref blob.layers[layerIndex];
-
+            
             for (int i = 0; i < passages.Length; i++)
             {
                 blender.sampleSkeleton = !eventsOnly && (i + 1) == passages.Length;

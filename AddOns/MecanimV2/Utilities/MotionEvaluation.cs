@@ -58,9 +58,56 @@ namespace Latios.MecanimV2
                                        ref T processor)
             where T : unmanaged, IProcessor
         {
-            // Todo:
-            throw new NotImplementedException();
+            Evaluate(motionNormalizedStartTimeWithLoops, motionNormalizedEndTimeWithLoops, ref controller, ref clips, parameters, motion, 1f, 1f, false, ref processor);
         }
+
+        private static void Evaluate<T>(float motionNormalizedStartTimeWithLoops,
+            float motionNormalizedEndTimeWithLoops,
+            ref MecanimControllerBlob controller,
+            ref SkeletonClipSetBlob clips,
+            ReadOnlySpan<MecanimParameter>    parameters,
+            MecanimControllerBlob.MotionIndex motion,
+            float parentWeight,
+            float timeScale,
+            bool mirrored,
+            ref T processor) where T : unmanaged, IProcessor
+        {
+            if (motion.invalid) return;
+            
+            if (!motion.isBlendTree)
+            {
+                var clipResult = new ClipResult
+                {
+                    currentNormalizedLoopTime = motionNormalizedStartTimeWithLoops,
+                    previousNormalizedLoopTime = motionNormalizedEndTimeWithLoops,
+                    weight = parentWeight,
+                    clipIndex = motion.index,
+                    mirror = mirrored,
+                };
+                processor.Execute(clipResult);
+                return;
+            }
+            
+            ref var tree = ref controller.blendTrees[motion.index];
+            switch (tree.blendTreeType)
+            {
+                case MecanimControllerBlob.BlendTree.BlendTreeType.Simple1D:
+                    EvaluateTreeSimple1D(motionNormalizedStartTimeWithLoops, motionNormalizedEndTimeWithLoops, ref controller, ref clips, parameters, ref tree, parentWeight, timeScale, mirrored, ref processor);
+                    return;
+                case MecanimControllerBlob.BlendTree.BlendTreeType.SimpleDirectional2D:
+                    //EvaluateTreeSimpleDirectional2D(motionNormalizedStartTimeWithLoops, motionNormalizedEndTimeWithLoops, ref controller, ref clips, parameters, ref tree, parentWeight, timeScale, mirrored,, ref processor);
+                    return;
+                case MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D:
+                case MecanimControllerBlob.BlendTree.BlendTreeType.FreeformCartesian2D:
+                    //EvaluateTreeFreeform(motionNormalizedStartTimeWithLoops, motionNormalizedEndTimeWithLoops, ref controller, ref clips, parameters, ref tree, parentWeight, timeScale, mirrored,, ref processor);
+                    return;
+                case MecanimControllerBlob.BlendTree.BlendTreeType.Direct:
+                    //EvaluateTreeDurationDirect(motionNormalizedStartTimeWithLoops, motionNormalizedEndTimeWithLoops, ref controller, ref clips, parameters, ref tree, parentWeight, timeScale, mirrored,, ref processor);
+                    return;
+            }
+        }
+        
+
         #endregion
 
         #region Utility
@@ -82,7 +129,73 @@ namespace Latios.MecanimV2
         }
         #endregion
 
+        
+        #region Tree Evaluations
+        
+        private static void EvaluateTreeSimple1D<T>(float motionNormalizedStartTimeWithLoops, float motionNormalizedEndTimeWithLoops, ref MecanimControllerBlob controller, ref SkeletonClipSetBlob clips, ReadOnlySpan<MecanimParameter> parameters, ref MecanimControllerBlob.BlendTree tree, float parentWeight, float parentTimeScale, bool mirrored, ref T processor) where T : unmanaged, IProcessor
+        {
+            // Find the last child before or at our parameter
+            int beforeIndex = -1;
+            var parameter   = parameters[tree.parameterIndices[0]].floatParam;
+            for (int i = 0; i < tree.children.Length; i++)
+            {
+                if (tree.children[i].position.x <= parameter)
+                    beforeIndex = i;
+                else
+                    break;
+            }
+            int afterIndex = beforeIndex + 1;
+
+            // Invalid tree
+            if (beforeIndex < 0 && afterIndex >= tree.children.Length) return;
+
+            float weightBefore = 0f;
+            float weightAfter = 0f;
+            
+            if (beforeIndex < 0)
+            {
+                // Parameter is before the first clip. Evaluate that clip (afterIndex) at full weight.
+                weightAfter = 1f;
+            } else if (afterIndex == tree.children.Length)
+            {
+                // Parameter is after the last clip. Evaluate that clip (beforeIndex) at full weight
+                weightBefore = 1f;
+            }
+            else
+            {
+                // Parameter is between two clips, calculate weights and evaluate both.
+                weightBefore = math.unlerp(tree.children[afterIndex].position.x, tree.children[beforeIndex].position.x, parameter);
+                weightAfter = 1 - weightBefore;
+            }
+
+            if (weightBefore > 0f)
+            {
+                var timeScaleBefore = math.abs(tree.children[beforeIndex].timeScale);
+                bool mirroredBefore = mirrored ^ tree.children[beforeIndex].mirrored;
+                float cycleOffsetBefore = tree.children[beforeIndex].cycleOffset;
+                Evaluate(motionNormalizedStartTimeWithLoops + cycleOffsetBefore , motionNormalizedEndTimeWithLoops + cycleOffsetBefore, ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex, parentWeight * weightBefore, parentTimeScale * timeScaleBefore, mirroredBefore, ref processor);
+            }
+
+            if (weightAfter > 0f)
+            {
+                var timeScaleAfter = math.abs(tree.children[afterIndex].timeScale);
+                bool mirroredAfter = mirrored ^ tree.children[afterIndex].mirrored;
+                float cycleOffsetAfter = tree.children[afterIndex].cycleOffset;
+                Evaluate(motionNormalizedStartTimeWithLoops + cycleOffsetAfter, motionNormalizedEndTimeWithLoops + cycleOffsetAfter, ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex, parentWeight * weightAfter, parentTimeScale * timeScaleAfter, mirroredAfter, ref processor);
+            }
+        }
+        
+        
+        
+        
+        
+        
+        #endregion
+        
+        
+        
         #region Durations
+        
         private static float GetBlendedMotionDurationSimple1D(ref MecanimControllerBlob controller,
                                                               ref SkeletonClipSetBlob clips,
                                                               ReadOnlySpan<MecanimParameter>      parameters,
@@ -100,7 +213,7 @@ namespace Latios.MecanimV2
             }
 
             // Find the first child at or after our parameter
-            int afterIndex;
+            
             if (beforeIndex >= 0 && tree.children[beforeIndex].position.x == parameter)
             {
                 // Return the result now to avoid duplicating fetching the child motion.
@@ -109,7 +222,7 @@ namespace Latios.MecanimV2
                 return timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
             }
 
-            afterIndex = beforeIndex + 1;
+            int afterIndex = beforeIndex + 1;
 
             // Try to get the child before's duration.
             float beforeDuration = 0f;
@@ -137,6 +250,7 @@ namespace Latios.MecanimV2
             return math.remap(tree.children[beforeIndex].position.x, tree.children[afterIndex].position.x, beforeDuration, afterDuration, parameter);
         }
 
+        
         // Todo: This needs to be revisited at some point if we want this to be robust.
         private static float GetBlendedMotionDurationSimpleDirectional2D(ref MecanimControllerBlob controller,
                                                                          ref SkeletonClipSetBlob clips,

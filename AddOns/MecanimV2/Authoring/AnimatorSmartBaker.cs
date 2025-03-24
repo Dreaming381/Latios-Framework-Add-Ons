@@ -4,7 +4,6 @@ using Latios.Kinemation;
 using Latios.Kinemation.Authoring;
 using Unity.Collections;
 using Unity.Entities;
-using UnityEditor.Animations;
 using UnityEngine;
 
 namespace Latios.MecanimV2.Authoring
@@ -94,15 +93,11 @@ namespace Latios.MecanimV2.Authoring
             }
             
             // Add build buffer element for layer weights if there is more than one layer
-            if (layers.Length > 1)
+            DynamicBuffer<LayerWeights> weights = baker.AddBuffer<LayerWeights>(entity);
+            for (var index = 0; index < layers.Length; index++)
             {
-                DynamicBuffer<LayerWeights> weights = baker.AddBuffer<LayerWeights>(entity);
-
-                for (var index = 0; index < layers.Length; index++)
-                {
-                    var layer = layers[index];
-                    weights.Add(new LayerWeights { weight = index == 0 ? 1 : layer.defaultWeight });
-                }
+                var layer = layers[index];
+                weights.Add(new LayerWeights { weight = index == 0 ? 1 : layer.defaultWeight });
             }
             
             // Add events buffers (for clip events and state transition events)
