@@ -337,7 +337,6 @@ namespace Latios.MecanimV2
         
         internal short GetStateIndex(short stateMachineIndex, int fullStateNameHash)
         {
-
             ref var stateMachine = ref stateMachines[stateMachineIndex];
             
             for (short i = 0; i < stateMachine.stateNameHashes.Length; i++)
@@ -349,11 +348,11 @@ namespace Latios.MecanimV2
         
         
         
-        internal short GetParameterIndex(FixedString128Bytes parameterName)
+        internal short GetParameterIndex(FixedString64Bytes parameterName)
         {
-            for (short  i = 0; i < parameterNames.Length; i++)
+            for (short i = 0; i < parameterNames.Length; i++)
             {
-                if (parameterName.Equals(parameterNames[i])) return i;
+                if (parameterName == parameterNames[i]) return i;
             }
             return -1;
         }

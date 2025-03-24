@@ -1,10 +1,8 @@
-using System;
-using Latios.MecanimV2;
+using Latios.Kinemation;
 using Unity.Burst;
-using Unity.Collections;
 using Unity.Entities;
 
-namespace Latios.Mecanim.AddOns.MecanimV2.Systems
+namespace Latios.MecanimV2
 {
     [UpdateInGroup(typeof(SimulationSystemGroup))]
     [RequireMatchingQueriesForUpdate]
@@ -17,54 +15,29 @@ namespace Latios.Mecanim.AddOns.MecanimV2.Systems
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            _mecanimQuery = state.Fluent()
-                .With<MecanimController>(false)
-                .With<MecanimStateMachineActiveStates>(false)
-                .With<LayerWeights>(true)
-                .With<MecanimParameter>(false).Build();
-            
+            _mecanimQuery = state.Fluent().WithAspect<MecanimAspect>().WithAspect<OptimizedSkeletonAspect>().Build();
             state.RequireForUpdate(_mecanimQuery);
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            state.Dependency = new UpdateStateMachinesJob
+            state.Dependency = new UpdateMecanimJob
             {
+                ElapsedTime = SystemAPI.Time.ElapsedTime,
                 DeltaTime = SystemAPI.Time.DeltaTime,
             }.ScheduleParallel(_mecanimQuery, state.Dependency);
         }
 
         [BurstCompile]
-        public partial struct UpdateStateMachinesJob : IJobEntity
+        public partial struct UpdateMecanimJob : IJobEntity
         {
+            public double ElapsedTime;
             public float DeltaTime;
 
-            public void Execute(ref MecanimController mecanimController, DynamicBuffer<MecanimStateMachineActiveStates> stateMachineActiveStates, DynamicBuffer<LayerWeights> layerWeights, DynamicBuffer<MecanimParameter> parameters)
+            public void Execute(MecanimAspect mecanimAspect, OptimizedSkeletonAspect optimizedSkeletonAspect)
             {
-                Span<BitField64> localTriggersToReset = stackalloc BitField64[1 + ((parameters.Length-1) >> 6)];
-                Span<StateMachineEvaluation.StatePassage> statePassages = stackalloc StateMachineEvaluation.StatePassage[8];
-                
-                for (var i = 0; i < stateMachineActiveStates.Length; i++)
-                {
-                    var stateMachineActiveState = stateMachineActiveStates[i];
-                    
-                    StateMachineEvaluation.Evaluate(
-                        ref stateMachineActiveState,
-                        ref mecanimController.controllerBlob.Value,
-                        ref mecanimController.skeletonClipsBlob.Value,
-                        i,
-                        DeltaTime,
-                        layerWeights.AsNativeArray().AsReadOnlySpan(),
-                        parameters.AsNativeArray().AsReadOnlySpan(),
-                        localTriggersToReset,
-                        statePassages,
-                        out int passagesCount,
-                        out float newInertialBlendProgressRealtime,
-                        out float newInertialBlendDurationRealtime);
-
-                    stateMachineActiveStates[i] = stateMachineActiveState;
-                }
+                mecanimAspect.Update(optimizedSkeletonAspect, ElapsedTime, DeltaTime);
             }
         }
     }

@@ -104,6 +104,10 @@ namespace Latios.MecanimV2.Authoring
                     weights.Add(new LayerWeights { weight = index == 0 ? 1 : layer.defaultWeight });
                 }
             }
+            
+            // Add events buffers (for clip events and state transition events)
+            baker.AddBuffer<MecanimClipEvent>(entity);
+            baker.AddBuffer<MecanimStateTransitionEvent>(entity);
 
             m_clipSetBlobHandle    = baker.RequestCreateBlobAsset(authoring, skeletonClipConfigs);
             m_controllerBlobHandle = baker.RequestCreateBlobAsset(baseAnimatorControllerRef.controller);

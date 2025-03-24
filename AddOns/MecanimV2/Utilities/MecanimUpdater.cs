@@ -16,8 +16,8 @@ namespace Latios.MecanimV2
                                   ReadOnlySpan<LayerWeights>                                 layerWeights,
                                   Span<MecanimParameter>                                     parameters,
                                   OptimizedSkeletonAspect skeleton,
-                                  DynamicBuffer<EventComponents.MecanimStateTransitionEvent> transitionEvents,
-                                  DynamicBuffer<EventComponents.MecanimClipEvent>            clipEvents,
+                                  DynamicBuffer<MecanimStateTransitionEvent> transitionEvents,
+                                  DynamicBuffer<MecanimClipEvent>            clipEvents,
                                   double elapsedTime,
                                   float deltaTime,
                                   int maxStateMachineIterations = 32)
@@ -219,16 +219,16 @@ namespace Latios.MecanimV2
 
         struct MotionBlender : MotionEvaluation.IProcessor
         {
-            public BlobAssetReference<SkeletonClipSetBlob>         clips;
-            public BlobAssetReference<SkeletonBoneMaskSetBlob>     masks;
-            public BufferPoseBlender                               blender;
-            public RootMotionDeltaAccumulator                      rootMotion;
-            public DynamicBuffer<EventComponents.MecanimClipEvent> events;
-            public float                                           stateWeight;
-            public int                                             maskIndex;
-            public bool                                            sampleRoot;
-            public bool                                            sampleSkeleton;
-            public bool                                            includeStartEvents;
+            public BlobAssetReference<SkeletonClipSetBlob>     clips;
+            public BlobAssetReference<SkeletonBoneMaskSetBlob> masks;
+            public BufferPoseBlender                           blender;
+            public RootMotionDeltaAccumulator                  rootMotion;
+            public DynamicBuffer<MecanimClipEvent>             events;
+            public float                                       stateWeight;
+            public int                                         maskIndex;
+            public bool                                        sampleRoot;
+            public bool                                        sampleSkeleton;
+            public bool                                        includeStartEvents;
 
             public void Execute(in MotionEvaluation.ClipResult result)
             {
