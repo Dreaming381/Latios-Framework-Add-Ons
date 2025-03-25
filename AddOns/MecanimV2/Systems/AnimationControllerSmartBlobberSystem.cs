@@ -117,6 +117,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                 blobTransition.duration                 = animatorStateTransition.duration;
                 blobTransition.interruptionSource       = (MecanimControllerBlob.Transition.InterruptionSource)animatorStateTransition.interruptionSource;
                 blobTransition.usesOrderedInterruptions = animatorStateTransition.orderedInterruption;
+                blobTransition.usesRealtimeDuration     = animatorStateTransition.hasFixedDuration;
             }
         }
 
@@ -729,7 +730,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                         if (blendTreeBlob.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D)
                         {
                             var pjmag = math.length(pj);
-                            pipj.x = (pimag - pjmag) / (0.5f * (pimag + pjmag));
+                            pipj.x = (pjmag - pimag) / (0.5f * (pimag + pjmag));
                             var direction = LatiosMath.ComplexMul(pi, new float2(pj.x, -pj.y));
                             pipj.y = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * math.atan2(direction.y, direction.x);
                         }

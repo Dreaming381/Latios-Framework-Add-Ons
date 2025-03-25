@@ -418,13 +418,13 @@ namespace Latios.MecanimV2
                                 fractionOfDeltaTimeInState = nextFractionBeforeExit;
 
                             // Overwrite our end times to the exit time
+                            currentStateEndTime = math.lerp(state.currentStateNormalizedTime, currentStateEndTime, fractionOfDeltaTimeInState);
+                            nextStateEndTime    = math.lerp(state.nextStateNormalizedTime, nextStateEndTime, fractionOfDeltaTimeInState);
                             if (activeTransitionBlob.usesRealtimeDuration)
                                 transitionTime += normalizedDeltaTimeRemaining * math.abs(scaledDeltaTime);
                             else
-                                transitionTime  = math.unlerp(activeTransitionBlob.duration, 1f, math.abs(currentStateEndTime));
+                                transitionTime += math.abs(currentStateEndTime - state.currentStateNormalizedTime) / activeTransitionBlob.duration;
                             transitionTime      = math.saturate(transitionTime);
-                            currentStateEndTime = math.lerp(state.currentStateNormalizedTime, currentStateEndTime, fractionOfDeltaTimeInState);
-                            nextStateEndTime    = math.lerp(state.nextStateNormalizedTime, nextStateEndTime, fractionOfDeltaTimeInState);
                         }
                         else
                         {
@@ -571,9 +571,9 @@ namespace Latios.MecanimV2
                         if (activeTransitionBlob.usesRealtimeDuration)
                             transitionTime = state.transitionNormalizedTime + normalizedDeltaTimeRemaining * math.abs(scaledDeltaTime) / activeTransitionBlob.duration;
                         else
-                            transitionTime = math.unlerp(activeTransitionBlob.duration, 1f, math.abs(currentStateEndTime));
+                            transitionTime = state.transitionNormalizedTime + math.abs(currentStateEndTime - state.currentStateNormalizedTime) / activeTransitionBlob.duration;
 
-                        var transitionEndTime = math.min(1f, math.abs(transitionTime));
+                        var transitionEndTime = math.abs(transitionTime);
                         if (transitionEndTime >= 1f)
                         {
                             // We finished our transition.

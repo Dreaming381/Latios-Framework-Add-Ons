@@ -1,5 +1,6 @@
 using System;
 using Latios.Kinemation;
+using Latios.Transforms;
 using Latios.Unsafe;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -12,9 +13,9 @@ namespace Latios.MecanimV2
     {
         public static void Update(ref ThreadStackAllocator threadStackAllocator,
                                   ref MecanimController controller,
-                                  Span<MecanimStateMachineActiveStates>                      activeStates,
-                                  ReadOnlySpan<LayerWeights>                                 layerWeights,
-                                  Span<MecanimParameter>                                     parameters,
+                                  Span<MecanimStateMachineActiveStates>      activeStates,
+                                  ReadOnlySpan<LayerWeights>                 layerWeights,
+                                  Span<MecanimParameter>                     parameters,
                                   OptimizedSkeletonAspect skeleton,
                                   DynamicBuffer<MecanimStateTransitionEvent> transitionEvents,
                                   DynamicBuffer<MecanimClipEvent>            clipEvents,
@@ -120,7 +121,7 @@ namespace Latios.MecanimV2
 
                 var passages = passagesByMachine[0];
                 BlendAllPassages(ref motionBlender, passages, ref blob, ref clips, parameters, 0, false, isVeryFirstUpdate);
-                bones[0] = motionBlender.rootMotion.normalizedDelta;
+                bones[0] = motionBlender.rootMotionResult;
             }
             else
             {
@@ -154,7 +155,8 @@ namespace Latios.MecanimV2
                                      bool isFirstUpdate)
         {
             ref var layer = ref blob.layers[layerIndex];
-            
+
+            TransformQvvs root = TransformQvvs.identity;
             for (int i = 0; i < passages.Length; i++)
             {
                 blender.sampleSkeleton = !eventsOnly && (i + 1) == passages.Length;
@@ -193,7 +195,12 @@ namespace Latios.MecanimV2
                     PatchMotionTimes(ref state, parameters, ref startTime, ref endTime);
                     MotionEvaluation.Evaluate(startTime, endTime, ref blob, ref clips, parameters, motionIndex, ref blender);
                 }
+
+                var newRoot        = blender.rootMotion.normalizedDelta;
+                root               = RootMotionTools.ConcatenateDeltas(root, newRoot);
+                blender.rootMotion = default;
             }
+            blender.rootMotionResult = root;
         }
 
         static void PatchMotionTimes(ref MecanimControllerBlob.State state, ReadOnlySpan<MecanimParameter> parameters, ref float start, ref float end)
@@ -223,6 +230,7 @@ namespace Latios.MecanimV2
             public BlobAssetReference<SkeletonBoneMaskSetBlob> masks;
             public BufferPoseBlender                           blender;
             public RootMotionDeltaAccumulator                  rootMotion;
+            public TransformQvvs                               rootMotionResult;
             public DynamicBuffer<MecanimClipEvent>             events;
             public float                                       stateWeight;
             public int                                         maskIndex;
