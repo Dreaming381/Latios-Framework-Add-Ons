@@ -18,6 +18,11 @@ namespace Latios.MecanimV2
         /// The time since the last inertial blend start, or -1f if no active inertial blending is happening.
         /// </summary>
         public float realtimeInInertialBlend;
+        /// <summary>
+        /// Determined if root motion should be applied to the root bone automatically
+        /// </summary>
+        public bool applyRootMotion;
+        
     }
 
     /// <summary>

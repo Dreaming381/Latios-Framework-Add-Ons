@@ -39,7 +39,15 @@ namespace Latios.MecanimV2
             get => m_controller.ValueRO.speed;
             set => m_controller.ValueRW.speed = value;
         }
-        
+
+        /// <summary>
+        /// Determines if root motion should be applied to the root bone automatically
+        /// </summary>
+        public bool applyRootMotion
+        {
+            get => m_controller.ValueRO.applyRootMotion;
+            set => m_controller.ValueRW.applyRootMotion = value;
+        }
         
         /// <summary>
         /// Advances all state machines for this animation controller by deltaTime
@@ -120,7 +128,6 @@ namespace Latios.MecanimV2
         }
         #endregion
         
-        
         #region StateHandles
         
         /**
@@ -162,8 +169,6 @@ namespace Latios.MecanimV2
         public short GetParameterIndex(int parameterNameHashCode) => GetControllerBlob().GetParameterIndex(parameterNameHashCode);
 
         #endregion
-        
-        
         
         #region Parameters
         

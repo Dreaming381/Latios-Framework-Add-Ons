@@ -42,7 +42,11 @@ namespace Latios.MecanimV2.Authoring
             }
             
             // Bake controller
-            baker.AddComponent(entity, new MecanimController { speed = authoring.speed });
+            baker.AddComponent(entity, new MecanimController
+            {
+                speed = authoring.speed,
+                applyRootMotion = authoring.applyRootMotion,
+            });
             BaseAnimatorControllerRef baseAnimatorControllerRef = baker.GetBaseControllerOf(runtimeAnimatorController);
             
             // Bake parameters
