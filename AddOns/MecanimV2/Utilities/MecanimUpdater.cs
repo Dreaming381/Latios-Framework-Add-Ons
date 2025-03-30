@@ -121,7 +121,8 @@ namespace Latios.MecanimV2
 
                 var passages = passagesByMachine[0];
                 BlendAllPassages(ref motionBlender, passages, ref blob, ref clips, parameters, 0, false, isVeryFirstUpdate);
-                bones[0] = motionBlender.rootMotionResult;
+                motionBlender.rootMotionResult.worldIndex = math.asint(1f);
+                bones[0]                                  = motionBlender.rootMotionResult;
             }
             else
             {
