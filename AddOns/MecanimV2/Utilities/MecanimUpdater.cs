@@ -111,11 +111,11 @@ namespace Latios.MecanimV2
                 var motionBlender = new MotionBlender
                 {
                     clips      = controller.skeletonClipsBlob,
-                    masks      = default,
+                    mask       = default,
                     blender    = new BufferPoseBlender(bones),
+                    maskCount  = default,
                     rootMotion = default,
                     events     = clipEvents,
-                    maskIndex  = -1,
                     sampleRoot = true,
                 };
 
@@ -126,7 +126,124 @@ namespace Latios.MecanimV2
             }
             else
             {
-                // Todo: I need sleep.
+                var mixBuffer       = skeleton.rawLocalTransformsRW;
+                var sampleBufferPtr = allocator.Allocate<TransformQvvs>(mixBuffer.Length);
+                var sampleBuffer    = CollectionHelper.ConvertExistingDataToNativeArray<TransformQvvs>(sampleBufferPtr, mixBuffer.Length, Allocator.None, true);
+                var maskCount       = mixBuffer.Length / 64 + math.select(0, 1, (mixBuffer.Length % 64) != 0);
+                var maskPtr         = allocator.Allocate<ulong>(maskCount);
+                for (int layerIndex = 0; layerIndex < blob.layers.Length; layerIndex++)
+                {
+                    ref var layer = ref blob.layers[layerIndex];
+
+                    // Compute the mask of bones that aren't fully overriden by future layers
+                    bool requiresSubsequentLayerFiltering = true;
+                    var  layerWeight                      = math.select(1f, layerWeights[layerIndex].weight, layerIndex != 0);
+                    if (layerWeight <= 0f)
+                    {
+                        requiresSubsequentLayerFiltering = false;
+                        for (int i = 0; i < maskCount; i++)
+                            maskPtr[i] = 0ul;
+                    }
+                    else if (layer.boneMaskIndex > 0)
+                    {
+                        var layerMask = controller.boneMasksBlob.Value[layer.boneMaskIndex];
+                        for (int i = 0; i < layerMask.Length; i++)
+                        {
+                            maskPtr[i] = layerMask[i];
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i * 64 + 63 < mixBuffer.Length; i++)
+                            maskPtr[i] = ~0ul;
+                        if ((mixBuffer.Length % 64) != 0)
+                        {
+                            BitField64 temp = default;
+                            temp.SetBits(0, true, mixBuffer.Length % 64);
+                            maskPtr[maskCount - 1] = temp.Value;
+                        }
+                    }
+
+                    bool layerInfluencesBones = false;
+                    if (requiresSubsequentLayerFiltering)
+                    {
+                        for (int otherLayerIndex = layerIndex + 1; otherLayerIndex < blob.layers.Length; otherLayerIndex++)
+                        {
+                            ref var otherLayer = ref blob.layers[otherLayerIndex];
+                            if (layerWeights[otherLayerIndex].weight < 1f || otherLayer.useAdditiveBlending)
+                                continue;
+
+                            if (otherLayer.boneMaskIndex < 0)
+                            {
+                                for (int i = 0; i < maskCount; i++)
+                                    maskPtr[i] = 0ul;
+                                break;
+                            }
+                            else
+                            {
+                                var otherMask = controller.boneMasksBlob.Value[otherLayer.boneMaskIndex];
+                                for (int i = 0; i < maskCount; i++)
+                                    maskPtr[i] &= ~otherMask[i];
+                            }
+                        }
+                        for (int i = 0; i < maskCount; i++)
+                            layerInfluencesBones |= maskPtr[i] != 0;
+                    }
+
+                    // Perform sampling
+                    var motionBlender = new MotionBlender
+                    {
+                        blender    = new BufferPoseBlender(sampleBuffer),
+                        clips      = controller.skeletonClipsBlob,
+                        events     = clipEvents,
+                        mask       = maskPtr,
+                        maskCount  = maskCount,
+                        rootMotion = default,
+                        sampleRoot = (maskPtr[0] & 0x1) == 0x1,
+                    };
+                    var passages = passagesByMachine[layer.stateMachineIndex];
+                    BlendAllPassages(ref motionBlender, passages, ref blob, ref clips, parameters, layerIndex, !layerInfluencesBones, isVeryFirstUpdate);
+                    motionBlender.rootMotionResult.worldIndex = math.asint(1f);
+                    sampleBuffer[0]                           = motionBlender.rootMotionResult;
+                    motionBlender.blender.Normalize();
+
+                    // Blend the result down to the mix buffer
+                    if (layer.useAdditiveBlending)
+                    {
+                        for (int m = 0; m < maskCount; m++)
+                        {
+                            var bits = maskPtr[m];
+                            for (int i = math.tzcnt(bits); i < 64; bits ^= 1ul << i, i = math.tzcnt(bits))
+                            {
+                                var add          = sampleBuffer[i];
+                                var position     = add.position * layerWeight;
+                                var rotation     = math.nlerp(quaternion.identity, add.rotation, layerWeight);
+                                var scaleStretch = math.lerp(1f, new float4(add.stretch, add.scale), layerWeight);
+                                add              = new TransformQvvs(position, rotation, scaleStretch.w, scaleStretch.xyz, math.asint(1f));
+                                mixBuffer[i]     = RootMotionTools.ConcatenateDeltas(mixBuffer[i], in add);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int m = 0; m < maskCount; m++)
+                        {
+                            var bits = maskPtr[m];
+                            for (int i = math.tzcnt(bits); i < 64; bits ^= 1ul << i, i = math.tzcnt(bits))
+                            {
+                                var oldBone  = mixBuffer[i];
+                                var newBone  = sampleBuffer[i];
+                                var position = math.lerp(oldBone.position, newBone.position, layerWeight);
+                                var rotation = math.nlerp(oldBone.rotation, newBone.rotation, layerWeight);
+                                var scale    = math.lerp(oldBone.scale, newBone.scale, layerWeight);
+                                var stretch  = math.lerp(oldBone.stretch, newBone.stretch, layerWeight);
+                                mixBuffer[i] = new TransformQvvs(position, rotation, scale, stretch, math.asint(1f));
+                            }
+                        }
+                    }
+
+                    // Todo: If we decide to support per-layer IK Passes, this is where we would do that.
+                }
             }
             if (isVeryFirstUpdate)
             {
@@ -139,9 +256,10 @@ namespace Latios.MecanimV2
             }
             if (controller.realtimeInInertialBlend >= 0f)
             {
-                // Todo: This method should return a bool whether any blending actually occurred.
-                // That way, we can detect the termination of the blend.
-                skeleton.InertialBlend(controller.realtimeInInertialBlend);
+                if (skeleton.IsFinishedWithInertialBlend(controller.realtimeInInertialBlend))
+                    controller.realtimeInInertialBlend = -1f;
+                else
+                    skeleton.InertialBlend(controller.realtimeInInertialBlend);
             }
             skeleton.EndSamplingAndSync();
         }
@@ -227,17 +345,17 @@ namespace Latios.MecanimV2
 
         struct MotionBlender : MotionEvaluation.IProcessor
         {
-            public BlobAssetReference<SkeletonClipSetBlob>     clips;
-            public BlobAssetReference<SkeletonBoneMaskSetBlob> masks;
-            public BufferPoseBlender                           blender;
-            public RootMotionDeltaAccumulator                  rootMotion;
-            public TransformQvvs                               rootMotionResult;
-            public DynamicBuffer<MecanimClipEvent>             events;
-            public float                                       stateWeight;
-            public int                                         maskIndex;
-            public bool                                        sampleRoot;
-            public bool                                        sampleSkeleton;
-            public bool                                        includeStartEvents;
+            public BlobAssetReference<SkeletonClipSetBlob> clips;
+            public ulong*                                  mask;
+            public BufferPoseBlender                       blender;
+            public RootMotionDeltaAccumulator              rootMotion;
+            public TransformQvvs                           rootMotionResult;
+            public DynamicBuffer<MecanimClipEvent>         events;
+            public float                                   stateWeight;
+            public int                                     maskCount;
+            public bool                                    sampleRoot;
+            public bool                                    sampleSkeleton;
+            public bool                                    includeStartEvents;
 
             public void Execute(in MotionEvaluation.ClipResult result)
             {
@@ -257,8 +375,8 @@ namespace Latios.MecanimV2
                 if (sampleSkeleton)
                 {
                     var clipEndTime = clip.LoopToClipTime(result.currentNormalizedLoopTime * clipDuration);
-                    if (maskIndex >= 0)
-                        clip.SamplePose(ref blender, masks.Value[maskIndex], clipEndTime, weight);
+                    if (mask != null)
+                        clip.SamplePose(ref blender, new ReadOnlySpan<ulong>(mask, maskCount), clipEndTime, weight);
                     else
                         clip.SamplePose(ref blender, clipEndTime, weight);
                     if (sampleRoot)
