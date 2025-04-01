@@ -46,7 +46,9 @@ namespace Latios.MecanimV2
                     return;
 
                 var rootBone                  = optimizedRootAspect.rootDelta;
-                localTransform.localTransform = RootMotionTools.ConcatenateDeltas(in rootBone, localTransform.localTransform);
+                var result                    = RootMotionTools.ConcatenateDeltas(localTransform.localTransform, in rootBone);
+                result.rotation               = math.normalize(result.rotation);
+                localTransform.localTransform = result;
             }
         }
     }

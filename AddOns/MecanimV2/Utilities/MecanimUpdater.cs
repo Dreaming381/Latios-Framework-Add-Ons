@@ -381,7 +381,7 @@ namespace Latios.MecanimV2
                         clip.SamplePose(ref blender, clipEndTime, weight);
                     if (sampleRoot)
                     {
-                        var clipStartTime = clip.LoopToClipTime(result.currentNormalizedLoopTime * clipDuration);
+                        var clipStartTime = clip.LoopToClipTime(result.previousNormalizedLoopTime * clipDuration);
                         var loopCycles    = clip.CountLoopCycleTransitions(result.currentNormalizedLoopTime * clipDuration, result.previousNormalizedLoopTime * clipDuration);
                         rootMotion.Accumulate(ref blender, ref clip, clipStartTime, loopCycles);
                     }

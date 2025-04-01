@@ -79,8 +79,8 @@ namespace Latios.MecanimV2
             {
                 var clipResult = new ClipResult
                 {
-                    currentNormalizedLoopTime  = motionNormalizedStartTimeWithLoops,
-                    previousNormalizedLoopTime = motionNormalizedEndTimeWithLoops,
+                    currentNormalizedLoopTime  = motionNormalizedEndTimeWithLoops,
+                    previousNormalizedLoopTime = motionNormalizedStartTimeWithLoops,
                     weight                     = parentWeight,
                     clipIndex                  = motion.index,
                     mirror                     = mirroredParent,
