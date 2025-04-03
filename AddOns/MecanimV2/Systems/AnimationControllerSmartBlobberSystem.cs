@@ -726,21 +726,24 @@ namespace Latios.MecanimV2.Authoring.Systems
                     for (int j = i + 1; j < childCount; j++)
                     {
                         var pj   = childrenBuilder[j].position;
-                        float3 pipj = default;
+                        float4 pipj = default;
                         if (blendTreeBlob.blendTreeType == MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D)
                         {
                             var pjmag = math.length(pj);
                             pipj.x = (pjmag - pimag) / (0.5f * (pimag + pjmag));
                             var direction = LatiosMath.ComplexMul(pi, new float2(pj.x, -pj.y));
-                            pipj.y = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * math.atan2(direction.y, direction.x);
+                            var directionAtan = math.select(math.atan2(direction.y, direction.x), 0, pi.Equals(float2.zero) || pj.Equals(float2.zero));
+                            pipj.y = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * directionAtan;
+                            pipj.w = 1f / (0.5f * (pimag + pjmag));
                         }
                         else
                         {
                             pipj.xy = pj - pi;
+                            pipj.w  = 1f;
                         }
                         pipj.z                                                                   = 1f / math.lengthsq(pipj.xy);
                         pipjBuilder[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)] = pipj;
-                        pipjBuilder[MecanimControllerBlob.BlendTree.PipjIndex(j, i, childCount)] = pipj * new float3(-1f, -1f, 1f);
+                        pipjBuilder[MecanimControllerBlob.BlendTree.PipjIndex(j, i, childCount)] = pipj * new float4(-1f, -1f, 1f, 1f);
                     }
                 }
             }
@@ -750,7 +753,7 @@ namespace Latios.MecanimV2.Authoring.Systems
                 for (int i = 0; i < childCount; i++)
                 {
                     var pos = childrenBuilder[i].position;
-                    pipjBuilder[i] = new float3(math.atan2(pos.y, pos.x), 0f, 0f);
+                    pipjBuilder[i] = new float4(math.atan2(pos.y, pos.x), 0f, 0f, 0f);
                     if (pos.Equals(float2.zero))
                         pipjBuilder[0].y = math.asfloat(i);
                     else if (i == 0)

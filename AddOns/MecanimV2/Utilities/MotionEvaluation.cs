@@ -676,9 +676,10 @@ namespace Latios.MecanimV2
                 {
                     var pmag      = math.length(p);
                     var pimag     = math.length(pi);
-                    pip.x         = (pmag - pimag) / math.max(0.5f * (pmag + pimag), math.EPSILON);
+                    pip.x         = pmag - pimag;
                     var direction = LatiosMath.ComplexMul(pi, new float2(p.x, -p.y));
-                    pip.y         = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * math.atan2(direction.y, direction.x);
+                    var directionAtan = math.select(math.atan2(direction.y, direction.x), 0, pi.Equals(float2.zero));
+                    pip.y         = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * directionAtan;
                 }
                 else
                 {
@@ -690,9 +691,12 @@ namespace Latios.MecanimV2
                 {
                     if (i == j)
                         continue;
-                    var pipj   = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
-                    var h      = math.max(0f, 1f - math.dot(pip, pipj.xy) * pipj.z);
-                    weights[i] = math.min(weights[i], h);
+
+                    var pipj    = tree.pipjs[MecanimControllerBlob.BlendTree.PipjIndex(i, j, childCount)];
+                    var pipp    = pip;
+                    pipp.x     *= pipj.w;
+                    var h       = math.max(0f, 1f - math.dot(pipp, pipj.xy) * pipj.z);
+                    weights[i]  = math.min(weights[i], h);
                 }
 
                 accumulatedWeight += weights[i];
