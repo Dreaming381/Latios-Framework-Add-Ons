@@ -253,9 +253,9 @@ namespace Latios.MecanimV2
             public BlendTreeType    blendTreeType;
             public BlobArray<Child> children;
             public BlobArray<short> parameterIndices;  // Todo: Make two shorts and use Child.position to store parameters for direct blending?
-            // For freeform trees, sized by (childCount - 1)^2, z is 1 / lengthSq
+            // For freeform trees, sized by (childCount - 1)^2, z is 1 / lengthSq, and w is 2 / (length(childPositionI) + length(childPositionJ))
             // For simple directional, sized by childCount, x is atan2(childPosition), y at index 0 is the index of the center child if any (asint)
-            public BlobArray<float3> pipjs;
+            public BlobArray<float4> pipjs;
 
             public enum BlendTreeType
             {
@@ -308,60 +308,62 @@ namespace Latios.MecanimV2
 
             internal const float kFreeformDirectionalBias = 2f;
         }
-        
-        
+
         internal short GetLayerIndex(FixedString128Bytes layerName)
         {
             for (short i = 0; i < layers.Length; i++)
             {
-                if (layers[i].name.Equals(layerName)) return i;
+                if (layers[i].name.Equals(layerName))
+                    return i;
             }
             return -1;
         }
-        
+
         internal short GetStateMachineIndex(FixedString128Bytes layerName)
         {
             return layers[GetLayerIndex(layerName)].stateMachineIndex;
         }
-        
+
         internal short GetStateIndex(short stateMachineIndex, FixedString128Bytes fullStateName)
         {
             ref var stateMachine = ref stateMachines[stateMachineIndex];
-            
+
             for (short i = 0; i < stateMachine.stateNameHashes.Length; i++)
             {
-                if (fullStateName.Equals(stateMachine.stateNames[i])) return i;
+                if (fullStateName.Equals(stateMachine.stateNames[i]))
+                    return i;
             }
             return -1;
         }
-        
+
         internal short GetStateIndex(short stateMachineIndex, int fullStateNameHash)
         {
             ref var stateMachine = ref stateMachines[stateMachineIndex];
-            
+
             for (short i = 0; i < stateMachine.stateNameHashes.Length; i++)
             {
-                if (fullStateNameHash == stateMachine.stateNameHashes[i]) return i;
+                if (fullStateNameHash == stateMachine.stateNameHashes[i])
+                    return i;
             }
             return -1;
         }
-        
-        
-        
+
         internal short GetParameterIndex(FixedString64Bytes parameterName)
         {
             for (short i = 0; i < parameterNames.Length; i++)
             {
-                if (parameterName == parameterNames[i]) return i;
+                if (parameterName == parameterNames[i])
+                    return i;
             }
             return -1;
         }
-        
+
         internal short GetParameterIndex(int parameterNameHash)
         {
-            for (short  i = 0; i < parameterNameHashes.Length; i++)
+            for (short i = 0; i < parameterNameHashes.Length; i++)
             {
-                if (parameterNameHash == parameterNameHashes[i]) return i;
+                if (parameterNameHash == parameterNameHashes[i])
+                    return i;
             }
             return -1;
         }
