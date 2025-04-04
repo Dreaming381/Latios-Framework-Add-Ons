@@ -632,7 +632,7 @@ namespace Latios.MecanimV2.Authoring.Systems
 
             blendTreeBlob.blendTreeType = MecanimControllerBlob.BlendTree.FromUnityBlendTreeType(blendTree.blendType);
 
-            Span<short>                                 parameterIndices      = stackalloc short[blendTree.children.Length];
+            Span<short>                                 parameterIndices      = stackalloc short[math.max(2, blendTree.children.Length)];
             int parameterIndicesCount = 0;
             Span<MecanimControllerBlob.BlendTree.Child> children              = stackalloc MecanimControllerBlob.BlendTree.Child[blendTree.children.Length];
             int childCount            = 0;
