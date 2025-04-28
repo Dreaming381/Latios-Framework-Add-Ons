@@ -6,6 +6,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Latios.Mecanim
 {
@@ -73,6 +74,7 @@ namespace Latios.Mecanim
                         controller.realtimeInInertialBlend = newInertialBlendProgressRealtime;
                         newInertialBlendDuration           = newInertialBlendDurationRealtime;
                     }
+                    controller.performingManualInertialBlend = false;
                     startedNewInertialBlend = true;
                 }
 
@@ -247,24 +249,76 @@ namespace Latios.Mecanim
                     // Todo: If we decide to support per-layer IK Passes, this is where we would do that.
                 }
             }
+
+            UndoRootMotionDeltaTimeScaling(skeleton, deltaTime);
+
+            ApplyInertialBlend(ref controller, skeleton, scaledDeltaTime, isVeryFirstUpdate, startedNewInertialBlend, newInertialBlendDuration);
+
+            skeleton.EndSamplingAndSync();
+        }
+        
+        private static void UndoRootMotionDeltaTimeScaling(OptimizedSkeletonAspect skeleton, float deltaTime)
+        {
+            if (deltaTime > 0f)
+            {
+                var localTransformsRW = skeleton.rawLocalTransformsRW;
+                var transformQvvs = localTransformsRW[0];
+                transformQvvs.position /= deltaTime;
+                
+                // We also scale the quaternion by 0.01 to avoid rotational angle overflow when dividing it by deltaTime
+                transformQvvs.rotation = MathUtil.ScaleQuaternion(transformQvvs.rotation, 0.01f / deltaTime);
+                
+                localTransformsRW[0] = transformQvvs;
+            }
+        }
+
+        private static void ApplyInertialBlend(ref MecanimController controller, OptimizedSkeletonAspect skeleton, float scaledDeltaTime, bool isVeryFirstUpdate, bool startedNewInertialBlend, float newInertialBlendDuration)
+        {
             if (isVeryFirstUpdate)
             {
                 controller.realtimeInInertialBlend = -1;
+                controller.manualInertialBlendDurationSeconds = -1;
                 startedNewInertialBlend            = false;
             }
+
+            if (controller.performingManualInertialBlend)
+            {
+                controller.realtimeInInertialBlend += scaledDeltaTime;
+            }
+            
+            if (controller.manualInertialBlendDurationSeconds >= 0)
+            {
+                // If we are not as far along in our inertial blend, that means this is the newer inertial blend.
+                if (!startedNewInertialBlend || scaledDeltaTime < controller.realtimeInInertialBlend)
+                {
+                    controller.realtimeInInertialBlend = scaledDeltaTime;
+                    newInertialBlendDuration           = controller.manualInertialBlendDurationSeconds;
+                    startedNewInertialBlend = true;
+                    
+                    controller.performingManualInertialBlend = true;
+                }
+                controller.manualInertialBlendDurationSeconds = -1;
+            }
+
             if (startedNewInertialBlend)
             {
-                skeleton.StartNewInertialBlend(deltaTime, newInertialBlendDuration - deltaTime);
+                skeleton.StartNewInertialBlend(scaledDeltaTime, newInertialBlendDuration - scaledDeltaTime);
             }
+            
             if (controller.realtimeInInertialBlend >= 0f)
             {
                 if (skeleton.IsFinishedWithInertialBlend(controller.realtimeInInertialBlend))
+                {
                     controller.realtimeInInertialBlend = -1f;
+                    controller.performingManualInertialBlend = false;
+                }
                 else
+                {
                     skeleton.InertialBlend(controller.realtimeInInertialBlend);
+                }
             }
-            skeleton.EndSamplingAndSync();
         }
+
 
         static void BlendAllPassages(ref MotionBlender blender,
                                      UnsafeList<StateMachineEvaluation.StatePassage> passages,

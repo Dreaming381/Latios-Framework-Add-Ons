@@ -22,7 +22,10 @@ namespace Latios.Mecanim
                 DeltaTime   = SystemAPI.Time.DeltaTime,
             }.ScheduleParallel(state.Dependency);
 
-            state.Dependency = new ApplyMecanimRootMotionsJob().ScheduleParallel(state.Dependency);
+            state.Dependency = new ApplyMecanimRootMotionsJob
+            {
+                DeltaTime = SystemAPI.Time.DeltaTime,
+            }.ScheduleParallel(state.Dependency);
         }
 
         [BurstCompile]
@@ -40,12 +43,20 @@ namespace Latios.Mecanim
         [BurstCompile]
         public partial struct ApplyMecanimRootMotionsJob : IJobEntity
         {
+            public float DeltaTime;
+            
             public void Execute(MecanimAspect mecanimAspect, OptimizedRootDeltaROAspect optimizedRootAspect, LocalTransformQvvsReadWriteAspect localTransform)
             {
                 if (!mecanimAspect.applyRootMotion)
                     return;
 
                 var rootBone                  = optimizedRootAspect.rootDelta;
+                
+                // Reapply delta time scaling to root motion 
+                rootBone.position *= DeltaTime;
+                // We scale rotation by an additional 100f to revert our 0.01f scale that prevents angle overflow
+                rootBone.rotation = MathUtil.ScaleQuaternion(rootBone.rotation, 100f * DeltaTime);
+                
                 var result                    = RootMotionTools.ConcatenateDeltas(localTransform.localTransform, in rootBone);
                 result.rotation               = math.normalize(result.rotation);
                 localTransform.localTransform = result;

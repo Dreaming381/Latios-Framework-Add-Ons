@@ -19,10 +19,23 @@ namespace Latios.Mecanim
         /// </summary>
         public float realtimeInInertialBlend;
         /// <summary>
-        /// Determined if root motion should be applied to the root bone automatically
+        /// Duration of a manually triggered inertial blend. -1f if no manual inertial blending is happening or once the inertial blend already started.
+        /// </summary>
+        public float manualInertialBlendDurationSeconds;
+        /// <summary>
+        /// Determines if a manual inertial blend is being performed.
+        /// </summary>
+        public bool performingManualInertialBlend;
+        
+        /// <summary>
+        /// Determines if root motion should be applied to the root bone automatically
         /// </summary>
         public bool applyRootMotion;
-        
+
+        public void StartInertialBlend(float durationSeconds)
+        {
+            manualInertialBlendDurationSeconds = durationSeconds;
+        }
     }
 
     /// <summary>

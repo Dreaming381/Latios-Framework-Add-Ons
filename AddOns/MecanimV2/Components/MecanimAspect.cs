@@ -400,6 +400,17 @@ namespace Latios.Mecanim
             return true;
         }
         #endregion
+
+        /// <summary>
+        /// Orders Mecanim to start a new inertial blend of the given duration
+        /// </summary>
+        /// <param name="durationSeconds">Total duration of the inertial blend (in seconds).</param>
+        #region Inertial Blend
+        public void StartInertialBlend(float durationSeconds)
+        {
+            m_controller.ValueRW.StartInertialBlend(durationSeconds);
+        }
+        #endregion
     }
 
     public struct StateHandle
