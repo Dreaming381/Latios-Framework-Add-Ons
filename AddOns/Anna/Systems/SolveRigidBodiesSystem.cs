@@ -1,3 +1,4 @@
+using System;
 using Latios.Psyshock;
 using Latios.Transforms;
 using Unity.Burst;
@@ -8,33 +9,66 @@ using Unity.Mathematics;
 
 using static Unity.Entities.SystemAPI;
 
-namespace Latios.Anna
+namespace Latios.Anna.Systems
 {
     [DisableAutoCreation]
     [BurstCompile]
     public partial struct SolveSystem : ISystem
     {
         LatiosWorldUnmanaged latiosWorld;
+        EntityQuery          constraintWritersQuery;
 
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            latiosWorld = state.GetLatiosWorldUnmanaged();
+            latiosWorld            = state.GetLatiosWorldUnmanaged();
+            constraintWritersQuery = state.Fluent().With<ConstraintWriter.ExistComponent>().IncludeSystemEntities().Build();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             var physicsSettings = latiosWorld.GetPhysicsSettings();
-            var pairStream      = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<BodyVsEnvironmentPairStream>(false).pairStream;
-            var b               = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<BodyVsKinematicPairStream>(false).pairStream;
-            var c               = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<BodyVsBodyPairStream>(false).pairStream;
-            var d               = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<BodyConstraintsPairStream>(false).pairStream;
+            var states          = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<CapturedRigidBodies>(false).states;
+            var kinematics      = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<CapturedKinematics>(true).kinematics;
+            var jh              = state.Dependency;
 
-            var states     = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<CapturedRigidBodies>(false).states;
-            var kinematics = latiosWorld.sceneBlackboardEntity.GetCollectionComponent<CapturedKinematics>(true).kinematics;
+            var constraintWriterEntities = constraintWritersQuery.ToEntityArray(Allocator.Temp);
+            var pairStreams              = new NativeArray<ConstraintPairStream>(constraintWriterEntities.Length, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            int validCount               = 0;
+            for (int i = 0; i < constraintWriterEntities.Length; i++)
+            {
+                var entity = constraintWriterEntities[i];
+                var writer = latiosWorld.GetCollectionComponent<ConstraintWriter>(entity, out JobHandle constraintJh);
+                if (!writer.pairStream.isCreated)
+                    continue;
 
-            var jh = new CombineStreamsJob { a = pairStream, b = b, c = c, d = d }.Schedule(state.Dependency);
+                // Reset all PairStreams for the next update so that we don't get old instances leftover from systems that stopped updating.
+                latiosWorld.SetCollectionComponentAndDisposeOld<ConstraintWriter>(entity, default);
+                pairStreams[validCount] = new ConstraintPairStream
+                {
+                    priority   = writer.systemScheduleOrder,
+                    jobHandle  = constraintJh,
+                    pairStream = writer.pairStream
+                };
+                validCount++;
+            }
+            if (validCount == 0)
+                return;
+
+            pairStreams = pairStreams.GetSubArray(0, validCount);
+            pairStreams.Sort();
+            var aggregatedPairStream = pairStreams[0].pairStream;
+            var pairStreamJh         = pairStreams[0].jobHandle;
+            if (validCount > 1)
+            {
+                for (int i = 1; i < pairStreams.Length; i++)
+                {
+                    pairStreamJh = JobHandle.CombineDependencies(pairStreamJh, pairStreams[i].jobHandle);
+                    pairStreamJh = new CombineStreamsJob { a = aggregatedPairStream, b = pairStreams[i].pairStream }.Schedule(pairStreamJh);
+                }
+            }
+            jh = JobHandle.CombineDependencies(jh, pairStreamJh);
 
             int numIterations  = physicsSettings.numIterations;
             var solveProcessor = new SolveBodiesProcessor
@@ -56,13 +90,27 @@ namespace Latios.Anna
             };
             for (int i = 0; i < numIterations; i++)
             {
-                jh                            = Physics.ForEachPair(in pairStream, in solveProcessor).ScheduleParallel(jh);
-                jh                            = stabilizerJob.ScheduleParallel(states.Length, 128, jh);
+                solveProcessor.lastIteration = i + 1 == numIterations;
+
+                jh = Physics.ForEachPair(in aggregatedPairStream, in solveProcessor).ScheduleParallel(jh);
+                jh = stabilizerJob.ScheduleParallel(states.Length, 128, jh);
+
                 solveProcessor.firstIteration = false;
-                solveProcessor.lastIteration  = i + 2 == numIterations;
                 stabilizerJob.firstIteration  = false;
             }
             state.Dependency = jh;
+        }
+
+        struct ConstraintPairStream : IComparable<ConstraintPairStream>
+        {
+            public uint       priority;
+            public PairStream pairStream;
+            public JobHandle  jobHandle;
+
+            public int CompareTo(ConstraintPairStream other)
+            {
+                return priority.CompareTo(other.priority);
+            }
         }
 
         [BurstCompile]
@@ -70,14 +118,10 @@ namespace Latios.Anna
         {
             public PairStream a;
             public PairStream b;
-            public PairStream c;
-            public PairStream d;
 
             public void Execute()
             {
                 a.ConcatenateFrom(ref b);
-                a.ConcatenateFrom(ref c);
-                a.ConcatenateFrom(ref d);
             }
         }
 

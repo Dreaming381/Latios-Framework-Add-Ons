@@ -24,8 +24,9 @@ namespace Latios.Anna
 
     internal struct CapturedKinematic
     {
-        public UnitySim.Velocity velocity;
-        public RigidTransform    inertialPoseWorldTransform;
+        public UnitySim.Velocity        velocity;
+        public RigidTransform           inertialPoseWorldTransform;
+        public UnitySim.MotionExpansion motionExpansion;
     }
 
     struct SolveByteCodes

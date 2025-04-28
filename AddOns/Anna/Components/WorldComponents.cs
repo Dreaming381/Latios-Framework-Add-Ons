@@ -17,20 +17,6 @@ namespace Latios.Anna
 
     public struct EnvironmentCollisionTag : IComponentData { }
 
-    public partial struct EnvironmentCollisionLayer : ICollectionComponent
-    {
-        public CollisionLayer layer;
-
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // Uses WorldUpdateAllocator
-    }
-
     public struct KinematicCollisionTag : IComponentData { }
-
-    public partial struct KinematicCollisionLayer : ICollectionComponent
-    {
-        public CollisionLayer layer;
-
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // Uses WorldUpdateAllocator
-    }
 }
 

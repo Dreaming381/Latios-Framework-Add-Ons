@@ -22,33 +22,23 @@ namespace Latios.Anna
         public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // WorldUpdateAllocator
     }
 
-    internal partial struct BodyVsEnvironmentPairStream : ICollectionComponent
+    // Enabled during constraint writing phase
+    internal struct ConstraintWritingConstants : IComponentData
     {
-        public PairStream pairStream;
-
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // WorldUpdateAllocator
+        public float deltaTime;
+        public float inverseDeltaTime;
+        public int   numSubSteps;
+        public float stiffDamping;
+        public float stiffTau;
+        public uint  constraintStartGlobalVersion;
+        public bool  isInConstraintWritingPhase;
     }
 
-    internal partial struct BodyVsKinematicPairStream : ICollectionComponent
+    internal partial struct BroadphaseCollisionWorld : ICollectionComponent
     {
-        public PairStream pairStream;
+        public CollisionWorld collisionWorld;
 
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // WorldUpdateAllocator
-    }
-
-    internal partial struct BodyVsBodyPairStream : ICollectionComponent
-    {
-        public PairStream pairStream;
-
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // WorldUpdateAllocator
-    }
-
-    // LockWorldAxesFlags
-    internal partial struct BodyConstraintsPairStream : ICollectionComponent
-    {
-        public PairStream pairStream;
-
-        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // WorldUpdateAllocator
+        public JobHandle TryDispose(JobHandle inputDeps) => inputDeps;  // Allocated with WorldUpdateAllocator
     }
 }
 

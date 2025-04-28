@@ -41,6 +41,8 @@ namespace Latios.Anna.Authoring
                     angular = float3.zero
                 }
             });
+            AddComponent<CollisionWorldAabb>( entity);
+            AddComponent<CollisionWorldIndex>(entity);
             if (math.any(authoring.lockPositionAxes | authoring.lockRotationAxes) || authoring.forceLockAxesExists)
             {
                 AddComponent(entity, new LockWorldAxesFlags

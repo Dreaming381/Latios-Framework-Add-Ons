@@ -8,7 +8,7 @@ using Unity.Mathematics;
 
 using static Unity.Entities.SystemAPI;
 
-namespace Latios.Anna
+namespace Latios.Anna.Systems
 {
     [DisableAutoCreation]
     [BurstCompile]
