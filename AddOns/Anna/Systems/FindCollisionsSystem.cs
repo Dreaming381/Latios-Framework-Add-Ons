@@ -202,7 +202,20 @@ namespace Latios.Anna.Systems
                         Physics.DistanceBetweenAll(result.colliderA, result.transformA, result.colliderB, result.transformB, maxDistance, ref distanceBetweenAllCache);
                         foreach (var distanceResult in distanceBetweenAllCache)
                         {
-                            var contacts                 = UnitySim.ContactsBetween(result.colliderA, result.transformA, result.colliderB, result.transformB, in distanceResult);
+                            var contacts = UnitySim.ContactsBetween(result.colliderA, result.transformA, result.colliderB, result.transformB, in distanceResult);
+                            //if (distanceResult.distance > 0.5f)
+                            //{
+                            //    var vel = lookup.rigidBodies.states[handleA.index].velocity;
+                            //    UnityEngine.Debug.Log(
+                            //        $"subcollider: {distanceResult.subColliderIndexB} distance: {distanceResult.distance}, normal: {contacts.contactNormal}, velocity: {vel.linear}, {vel.angular}");
+                            //    foreach (var contact in contacts.AsSpan())
+                            //    {
+                            //        UnityEngine.Debug.Log($"contact: {contact.location}, {contact.distanceToA}");
+                            //    }
+                            //    var print = PhysicsDebug.LogDistanceBetween(result.colliderA, result.transformA, result.colliderB, result.transformB, maxDistance);
+                            //    //PhysicsDebug.LogWarning(print);
+                            //}
+
                             var coefficientOfFriction    = lookup.GetCoefficientOfFriction(in handleA);
                             var coefficientOfRestitution = lookup.GetCoefficientOfRestitution(in handleA);
                             writer.SpeculateContactsBetween(ref lookup,

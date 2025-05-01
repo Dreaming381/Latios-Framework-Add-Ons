@@ -63,6 +63,15 @@ namespace Latios.Anna
             internal int    index;
         }
 
+        // Only valid for a single update
+        public struct ConstraintSpring
+        {
+            internal float tau;
+            internal float damping;
+            internal uint  updateVersion;
+            internal bool  valid;
+        }
+
         public bool TryGetRigidBodyHandle(Entity entity, out RigidBodyHandle rigidBodyHandle)
         {
             rigidBodyHandle.index  = -1;
@@ -99,6 +108,40 @@ namespace Latios.Anna
 
         public float GetCoefficientOfRestitution(in RigidBodyHandle rigidBodyHandle) => rigidBodies.states[rigidBodyHandle.index].coefficientOfRestitution;
         public float GetCoefficientOfFriction(in RigidBodyHandle rigidBodyHandle) => rigidBodies.states[rigidBodyHandle.index].coefficientOfFriction;
+
+        public ConstraintSpring CreateRigidSpring()
+        {
+            return new ConstraintSpring
+            {
+                damping       = constants.stiffDamping,
+                tau           = constants.stiffTau,
+                updateVersion = constants.constraintStartGlobalVersion,
+                valid         = true
+            };
+        }
+
+        public ConstraintSpring CreateSpring(float frequency, float dampingRatio)
+        {
+            UnitySim.ConstraintTauAndDampingFrom(frequency, dampingRatio, constants.deltaTime, math.max(1, constants.numIterations), out var tau, out var damping);
+            return new ConstraintSpring
+            {
+                damping       = damping,
+                tau           = tau,
+                updateVersion = constants.constraintStartGlobalVersion,
+                valid         = true
+            };
+        }
+
+        public ConstraintSpring CreateSpring(RigidBodyHandle rigidBodyHandle, float springForceConstant, float dampingForceConstant)
+        {
+            var inverseMass = rigidBodies.states[rigidBodyHandle.index].mass.inverseMass;
+            var mass        = 1f / inverseMass;
+            if (!math.isfinite(mass))
+                return default;
+            var frequency    = UnitySim.SpringFrequencyFrom(springForceConstant, inverseMass);
+            var dampingRatio = UnitySim.DampingRatioFrom(springForceConstant, dampingForceConstant, mass);
+            return CreateSpring(frequency, dampingRatio);
+        }
 
         public FluentQuery AppendToQuery(FluentQuery query) => query.With<CapturedRigidBodies.ExistComponent, CapturedKinematics.ExistComponent>(true);
 

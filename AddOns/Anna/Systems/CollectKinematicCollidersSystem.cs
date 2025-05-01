@@ -23,7 +23,7 @@ namespace Latios.Anna.Systems
         {
             latiosWorld = state.GetLatiosWorldUnmanaged();
 
-            m_query = state.Fluent().With<KinematicCollisionTag, WorldTransform, PreviousTransform>(true).With<CollisionWorldAabb>(false).Build();
+            m_query = state.Fluent().With<KinematicCollisionTag, WorldTransform, PreviousTransform>(true).Build();
         }
 
         public void OnNewScene(ref SystemState state)
@@ -94,17 +94,17 @@ namespace Latios.Anna.Systems
             {
                 var entities           = chunk.GetEntityDataPtrRO(entityHandle);
                 var transforms         = (WorldTransform*)chunk.GetRequiredComponentDataPtrRO(ref transformHandle);
-                var colliders          = (Collider*)chunk.GetRequiredComponentDataPtrRO(ref colliderHandle);
+                var colliders          = chunk.GetComponentDataPtrRO(ref colliderHandle);
                 var previousTransforms = (PreviousTransform*)chunk.GetRequiredComponentDataPtrRO(ref previousTransformHandle);
-                var aabbs              = (Aabb*)chunk.GetRequiredComponentDataPtrRW(ref aabbHandle);
+                var aabbs              = (Aabb*)chunk.GetComponentDataPtrRW(ref aabbHandle);
 
                 for (int i = 0, index = startIndices[unfilteredChunkIndex]; i < chunk.Count; i++, index++)
                 {
                     entityToIndexMap.TryAdd(entities[i], index);
 
-                    ref var transform = ref transforms[i];
-                    ref var previous  = ref previousTransforms[i];
-                    ref var collider  = ref colliders[i];
+                    ref var  transform = ref transforms[i];
+                    ref var  previous  = ref previousTransforms[i];
+                    Collider collider  = colliders == null ? default(SphereCollider) : colliders[i];
 
                     var aabb              = Physics.AabbFrom(in collider, in transform.worldTransform);
                     var angularExpansion  = UnitySim.AngularExpansionFactorFrom(in collider);
@@ -127,13 +127,18 @@ namespace Latios.Anna.Systems
                     };
 
                     var motionExpansion = new UnitySim.MotionExpansion(in velocity, dt, angularExpansion);
-                    aabbs[i]            = motionExpansion.ExpandAabb(aabb);
+                    aabb                = motionExpansion.ExpandAabb(aabb);
+                    var bucketIndex     = bucketCalculator.BucketIndexFrom(in aabb);
+
+                    if (aabbs != null)
+                        aabbs[i] = aabb;
 
                     kinematics[index] = new CapturedKinematic
                     {
                         velocity                   = velocity,
                         inertialPoseWorldTransform = inertialPoseWorldTransform,
-                        motionExpansion            = motionExpansion
+                        motionExpansion            = motionExpansion,
+                        bucketIndex                = bucketIndex,
                     };
                 }
             }

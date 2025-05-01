@@ -8,7 +8,8 @@ performance, flexibility, and most importantly, ease-of-use.
 
 Currently, Anna provides basic rigid bodies which can collide with each other
 and the environment. Additionally, rigid bodies can have particular position and
-rotation axes locked.
+rotation axes locked. Anna supports Shockwave for spatial queries. And it
+provides an API for feeding constraints directly to the solver.
 
 ## Getting Started
 
@@ -16,7 +17,7 @@ rotation axes locked.
 
 **Requirements:**
 
--   Requires Latios Framework 0.11.1 or newer
+-   Requires Latios Framework 0.13.0 or newer
 
 **Main Author(s):** Dreaming I’m Latios
 
@@ -34,7 +35,7 @@ Add the following to `LatiosBootstrap` (only the runtime is necessary):
 Latios.Anna.AnnaBootstrap.InstallAnna(world);
 ```
 
-### Usage
+### Basic Usage
 
 Use the `CollisionTagAuthoring` component to specify static environment and
 kinematic colliders in your scene. And use the `AnnaRigidBodyAuthoring`
@@ -43,3 +44,40 @@ scene properties.
 
 At runtime, you can either directly modify the `RigidBody` values, or you can
 use the `AddImpulse` dynamic buffer.
+
+You can disable collision between pairs of entities by adding a
+`DynamicBuffer<CollisionExclusionPair>` buffer to any entities, including system
+entities. Neither order within a pair, or order amongst pairs matter (that is,
+it behaves in the way you would expect if you don’t overthink it).
+
+### Shockwave Integration
+
+Anna builds the Shockwave `WorldCollisionAspect` after `TransformSuperSystem`
+within a frame. AABBs will be expanded to include the full motion or rigid
+bodies and kinematic colliders since the start of the frame. This only occurs if
+Shockwave is installed. `WorldCollisionAspect` lives on the
+`sceneBlackboardEntity`.
+
+### Adding Constraints
+
+Anna provides an API that allows you to feed constraints directly into the
+solver. In fact, the built-in constraints (contacts and locking) exclusively use
+this public API.
+
+To write constraints, your system must update within
+`ConstraintWritingSuperSystem`. You will need to create a `ConstraintWriter`,
+which is an `ICollectionComponent`. You can add this to any entity, including
+system entities. You will also typically want to access
+`ConstraintEntityInfoLookup` and possibly `ConstraintCollisionWorld`, which both
+live on the `sceneBlackboardEntity`.
+
+`ConstraintEntityInfoLookup` provides handles to rigid bodies, kinematic
+colliders, and metadata for describing springs. These three things are only
+valid for a single update. *In case you were wondering, springs are
+timestep-dependent.*
+
+## Known Issue
+
+Anna is still missing APIs for receiving feedback about collisions and impulses.
+I’ve yet to decide on an API for them. If this is something you would like to
+see, feel free to discuss your specific needs on the framework Discord.

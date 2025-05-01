@@ -27,6 +27,7 @@ namespace Latios.Anna
     {
         public float deltaTime;
         public float inverseDeltaTime;
+        public int   numIterations;
         public int   numSubSteps;
         public float stiffDamping;
         public float stiffTau;

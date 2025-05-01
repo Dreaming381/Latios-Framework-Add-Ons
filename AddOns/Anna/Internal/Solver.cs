@@ -27,6 +27,7 @@ namespace Latios.Anna
                 ref var           streamData          = ref pair.GetRef<ContactStreamData>();
                 ref var           rigidBodyA          = ref statesSpan[streamData.indexA];
                 UnitySim.Velocity environmentVelocity = default;
+                var               previousVelocity    = rigidBodyA.velocity;
                 UnitySim.SolveJacobian(ref rigidBodyA.velocity,
                                        in rigidBodyA.mass,
                                        in rigidBodyA.motionStabilizer,
@@ -39,6 +40,11 @@ namespace Latios.Anna
                                        false,
                                        invNumSolverIterations,
                                        out _);
+
+                //if (math.distance(previousVelocity.linear.xz, rigidBodyA.velocity.linear.xz) > 0.25f)
+                //{
+                //    UnityEngine.Debug.Log($"Extreme impulse. Before: {previousVelocity.linear}, after: {rigidBodyA.velocity.linear}");
+                //}
 
                 if (firstIteration)
                 {

@@ -97,10 +97,10 @@ namespace Latios.Anna.Systems
             {
                 var entities    = chunk.GetEntityDataPtrRO(entityHandle);
                 var transforms  = (WorldTransform*)chunk.GetRequiredComponentDataPtrRO(ref transformHandle);
-                var colliders   = (Collider*)chunk.GetRequiredComponentDataPtrRO(ref colliderHandle);
+                var colliders   = chunk.GetComponentDataPtrRO(ref colliderHandle);
                 var rigidBodies = (RigidBody*)chunk.GetRequiredComponentDataPtrRW(ref rigidBodyHandle);
                 var impulses    = chunk.GetBufferAccessor(ref addImpulseHandle);
-                var aabbs       = (Aabb*)chunk.GetRequiredComponentDataPtrRW(ref aabbHandle);
+                var aabbs       = (Aabb*)chunk.GetComponentDataPtrRW(ref aabbHandle);
 
                 for (int i = 0, index = startIndices[unfilteredChunkIndex]; i < chunk.Count; i++, index++)
                 {
@@ -108,13 +108,13 @@ namespace Latios.Anna.Systems
 
                     var     entity    = entities[i];
                     ref var transform = ref transforms[i];
-                    ref var collider  = ref colliders[i];
                     ref var rigidBody = ref rigidBodies[i];
 
-                    var aabb              = Physics.AabbFrom(in collider, in transform.worldTransform);
-                    var angularExpansion  = UnitySim.AngularExpansionFactorFrom(in collider);
-                    var localCenterOfMass = UnitySim.LocalCenterOfMassFrom(in collider);
-                    var localInertia      = UnitySim.LocalInertiaTensorFrom(in collider, transform.stretch);
+                    Collider collider          = colliders == null ? default(SphereCollider) : colliders[i];
+                    var      aabb              = Physics.AabbFrom(in collider, in transform.worldTransform);
+                    var      angularExpansion  = UnitySim.AngularExpansionFactorFrom(in collider);
+                    var      localCenterOfMass = UnitySim.LocalCenterOfMassFrom(in collider);
+                    var      localInertia      = UnitySim.LocalInertiaTensorFrom(in collider, transform.stretch);
                     UnitySim.ConvertToWorldMassInertia(in transform.worldTransform,
                                                        in localInertia,
                                                        localCenterOfMass,
@@ -141,7 +141,8 @@ namespace Latios.Anna.Systems
                     aabb                = motionExpansion.ExpandAabb(aabb);
                     var bucketIndex     = bucketCalculator.BucketIndexFrom(in aabb);
 
-                    aabbs[i] = aabb;
+                    if (aabbs != null)
+                        aabbs[i] = aabb;
 
                     states[index] = new CapturedRigidBodyState
                     {

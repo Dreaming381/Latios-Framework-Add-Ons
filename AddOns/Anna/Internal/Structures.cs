@@ -27,6 +27,7 @@ namespace Latios.Anna
         public UnitySim.Velocity        velocity;
         public RigidTransform           inertialPoseWorldTransform;
         public UnitySim.MotionExpansion motionExpansion;
+        public int                      bucketIndex;
     }
 
     struct SolveByteCodes
