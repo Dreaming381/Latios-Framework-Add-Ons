@@ -6,7 +6,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace Latios.Mecanim
 {
@@ -75,7 +74,7 @@ namespace Latios.Mecanim
                         newInertialBlendDuration           = newInertialBlendDurationRealtime;
                     }
                     controller.performingManualInertialBlend = false;
-                    startedNewInertialBlend = true;
+                    startedNewInertialBlend                  = true;
                 }
 
                 float accumulatedDeltaTime = 0f;
@@ -256,36 +255,41 @@ namespace Latios.Mecanim
 
             skeleton.EndSamplingAndSync();
         }
-        
+
         private static void UndoRootMotionDeltaTimeScaling(OptimizedSkeletonAspect skeleton, float deltaTime)
         {
             if (deltaTime > 0f)
             {
-                var localTransformsRW = skeleton.rawLocalTransformsRW;
-                var transformQvvs = localTransformsRW[0];
+                var localTransformsRW   = skeleton.rawLocalTransformsRW;
+                var transformQvvs       = localTransformsRW[0];
                 transformQvvs.position /= deltaTime;
-                
+
                 // We also scale the quaternion by 0.01 to avoid rotational angle overflow when dividing it by deltaTime
                 transformQvvs.rotation = MathUtil.ScaleQuaternion(transformQvvs.rotation, 0.01f / deltaTime);
-                
+
                 localTransformsRW[0] = transformQvvs;
             }
         }
 
-        private static void ApplyInertialBlend(ref MecanimController controller, OptimizedSkeletonAspect skeleton, float scaledDeltaTime, bool isVeryFirstUpdate, bool startedNewInertialBlend, float newInertialBlendDuration)
+        private static void ApplyInertialBlend(ref MecanimController controller,
+                                               OptimizedSkeletonAspect skeleton,
+                                               float scaledDeltaTime,
+                                               bool isVeryFirstUpdate,
+                                               bool startedNewInertialBlend,
+                                               float newInertialBlendDuration)
         {
             if (isVeryFirstUpdate)
             {
-                controller.realtimeInInertialBlend = -1;
+                controller.realtimeInInertialBlend            = -1;
                 controller.manualInertialBlendDurationSeconds = -1;
-                startedNewInertialBlend            = false;
+                startedNewInertialBlend                       = false;
             }
 
             if (controller.performingManualInertialBlend)
             {
                 controller.realtimeInInertialBlend += scaledDeltaTime;
             }
-            
+
             if (controller.manualInertialBlendDurationSeconds >= 0)
             {
                 // If we are not as far along in our inertial blend, that means this is the newer inertial blend.
@@ -293,8 +297,8 @@ namespace Latios.Mecanim
                 {
                     controller.realtimeInInertialBlend = scaledDeltaTime;
                     newInertialBlendDuration           = controller.manualInertialBlendDurationSeconds;
-                    startedNewInertialBlend = true;
-                    
+                    startedNewInertialBlend            = true;
+
                     controller.performingManualInertialBlend = true;
                 }
                 controller.manualInertialBlendDurationSeconds = -1;
@@ -304,12 +308,12 @@ namespace Latios.Mecanim
             {
                 skeleton.StartNewInertialBlend(scaledDeltaTime, newInertialBlendDuration - scaledDeltaTime);
             }
-            
+
             if (controller.realtimeInInertialBlend >= 0f)
             {
                 if (skeleton.IsFinishedWithInertialBlend(controller.realtimeInInertialBlend))
                 {
-                    controller.realtimeInInertialBlend = -1f;
+                    controller.realtimeInInertialBlend       = -1f;
                     controller.performingManualInertialBlend = false;
                 }
                 else
@@ -318,7 +322,6 @@ namespace Latios.Mecanim
                 }
             }
         }
-
 
         static void BlendAllPassages(ref MotionBlender blender,
                                      UnsafeList<StateMachineEvaluation.StatePassage> passages,

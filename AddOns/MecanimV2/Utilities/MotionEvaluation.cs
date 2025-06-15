@@ -7,30 +7,30 @@ namespace Latios.Mecanim
     public static class MotionEvaluation
     {
         #region API
-        public static float GetBlendedMotionDuration(ref MecanimControllerBlob controller,
-                                                     ref SkeletonClipSetBlob clips,
-                                                     ReadOnlySpan<MecanimParameter>    parameters,
-                                                     MecanimControllerBlob.MotionIndex motion)
+        public static float GetBlendedMotionFrequency(ref MecanimControllerBlob controller,
+                                                      ref SkeletonClipSetBlob clips,
+                                                      ReadOnlySpan<MecanimParameter>    parameters,
+                                                      MecanimControllerBlob.MotionIndex motion)
         {
             if (motion.invalid)
                 return 0f;
             if (!motion.isBlendTree)
             {
-                return clips.clips[motion.index].duration;
+                return 1f / clips.clips[motion.index].duration;
             }
 
             ref var tree = ref controller.blendTrees[motion.index];
             switch (tree.blendTreeType)
             {
                 case MecanimControllerBlob.BlendTree.BlendTreeType.Simple1D:
-                    return GetBlendedMotionDurationSimple1D(ref controller, ref clips, parameters, ref tree);
+                    return GetBlendedMotionFrequencySimple1D(ref controller, ref clips, parameters, ref tree);
                 case MecanimControllerBlob.BlendTree.BlendTreeType.SimpleDirectional2D:
-                    return GetBlendedMotionDurationSimpleDirectional2D(ref controller, ref clips, parameters, ref tree);
+                    return GetBlendedMotionFrequencySimpleDirectional2D(ref controller, ref clips, parameters, ref tree);
                 case MecanimControllerBlob.BlendTree.BlendTreeType.FreeformDirectional2D:
                 case MecanimControllerBlob.BlendTree.BlendTreeType.FreeformCartesian2D:
-                    return GetBlendedMotionDurationFreeform(ref controller, ref clips, parameters, ref tree);
+                    return GetBlendedMotionFrequencyFreeform(ref controller, ref clips, parameters, ref tree);
                 case MecanimControllerBlob.BlendTree.BlendTreeType.Direct:
-                    return GetBlendedMotionDurationDirect(ref controller, ref clips, parameters, ref tree);
+                    return GetBlendedMotionFrequencyDirect(ref controller, ref clips, parameters, ref tree);
                 default: return 0f;
             }
         }
@@ -384,12 +384,12 @@ namespace Latios.Mecanim
 
         #endregion
 
-        #region Durations
+        #region Frequencies
 
-        private static float GetBlendedMotionDurationSimple1D(ref MecanimControllerBlob controller,
-                                                              ref SkeletonClipSetBlob clips,
-                                                              ReadOnlySpan<MecanimParameter>      parameters,
-                                                              ref MecanimControllerBlob.BlendTree tree)
+        private static float GetBlendedMotionFrequencySimple1D(ref MecanimControllerBlob controller,
+                                                               ref SkeletonClipSetBlob clips,
+                                                               ReadOnlySpan<MecanimParameter>      parameters,
+                                                               ref MecanimControllerBlob.BlendTree tree)
         {
             // Find the last child before or at our parameter
             int beforeIndex = -1;
@@ -409,42 +409,42 @@ namespace Latios.Mecanim
                 // Return the result now to avoid duplicating fetching the child motion.
                 // Also, duplicate values breaks math.remap below.
                 var timeScale = math.abs(tree.children[beforeIndex].timeScale);
-                return timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
+                return timeScale * GetBlendedMotionFrequency(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
             }
 
             int afterIndex = beforeIndex + 1;
 
-            // Try to get the child before's duration.
-            float beforeDuration = 0f;
+            // Try to get the child before's frequency.
+            float beforeFrequency = 0f;
             if (beforeIndex >= 0)
             {
-                var timeScale  = math.abs(tree.children[beforeIndex].timeScale);
-                beforeDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
+                var timeScale   = math.abs(tree.children[beforeIndex].timeScale);
+                beforeFrequency = timeScale * GetBlendedMotionFrequency(ref controller, ref clips, parameters, tree.children[beforeIndex].motionIndex);
             }
 
-            // Try to get the child after's duration. If invalid, walk backwards.
-            float afterDuration = 0f;
+            // Try to get the child after's frequency. If invalid, walk backwards.
+            float afterFrequency = 0f;
             if (afterIndex < tree.children.Length)
             {
-                var timeScale = math.abs(tree.children[afterIndex].timeScale);
-                afterDuration = timeScale * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
+                var timeScale  = math.abs(tree.children[afterIndex].timeScale);
+                afterFrequency = timeScale * GetBlendedMotionFrequency(ref controller, ref clips, parameters, tree.children[afterIndex].motionIndex);
             }
 
             // Process results
             if (beforeIndex < 0 && afterIndex == tree.children.Length)
                 return 0f; // Tree is totally invalid
             if (beforeIndex < 0)
-                return afterDuration;
+                return afterFrequency;
             if (afterIndex == tree.children.Length)
-                return beforeDuration;
-            return math.remap(tree.children[beforeIndex].position.x, tree.children[afterIndex].position.x, beforeDuration, afterDuration, parameter);
+                return beforeFrequency;
+            return math.remap(tree.children[beforeIndex].position.x, tree.children[afterIndex].position.x, beforeFrequency, afterFrequency, parameter);
         }
 
         // Todo: This needs to be revisited at some point if we want this to be robust.
-        private static float GetBlendedMotionDurationSimpleDirectional2D(ref MecanimControllerBlob controller,
-                                                                         ref SkeletonClipSetBlob clips,
-                                                                         ReadOnlySpan<MecanimParameter>      parameters,
-                                                                         ref MecanimControllerBlob.BlendTree tree)
+        private static float GetBlendedMotionFrequencySimpleDirectional2D(ref MecanimControllerBlob controller,
+                                                                          ref SkeletonClipSetBlob clips,
+                                                                          ReadOnlySpan<MecanimParameter>      parameters,
+                                                                          ref MecanimControllerBlob.BlendTree tree)
         {
             bool isValidTree = CalculateWeightsForSimpleDirectional2D(parameters,
                                                                       ref tree,
@@ -458,8 +458,8 @@ namespace Latios.Mecanim
             if (!isValidTree)
                 return 0f;
 
-            // Sum all the durations, multiplied by their weights and time scales
-            float duration = 0f;
+            // Sum all the frequencies, multiplied by their weights and time scales
+            float frequency = 0f;
             for (int i = 0; i < tree.children.Length; i++)
             {
                 float weight = extraWeightForEachChild;
@@ -473,60 +473,60 @@ namespace Latios.Mecanim
 
                 if (weight > 0f)
                 {
-                    float clipDuration         = GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[i].motionIndex);
-                    float clipTimeScale        = math.abs(tree.children[i].timeScale);
-                    float weightedClipDuration = weight * clipTimeScale * clipDuration;
+                    float clipFrequency         = GetBlendedMotionFrequency(ref controller, ref clips, parameters, tree.children[i].motionIndex);
+                    float clipTimeScale         = math.abs(tree.children[i].timeScale);
+                    float weightedClipFrequency = weight * clipTimeScale * clipFrequency;
 
-                    duration += weightedClipDuration;
+                    frequency += weightedClipFrequency;
                 }
             }
 
-            return duration;
+            return frequency;
         }
 
         // Freeform (directional or cartesian)
-        private static float GetBlendedMotionDurationFreeform(ref MecanimControllerBlob controller,
-                                                              ref SkeletonClipSetBlob clips,
-                                                              ReadOnlySpan<MecanimParameter>      parameters,
-                                                              ref MecanimControllerBlob.BlendTree tree)
+        private static float GetBlendedMotionFrequencyFreeform(ref MecanimControllerBlob controller,
+                                                               ref SkeletonClipSetBlob clips,
+                                                               ReadOnlySpan<MecanimParameter>      parameters,
+                                                               ref MecanimControllerBlob.BlendTree tree)
         {
-            int         childCount = tree.children.Length;
-            Span<float> weights    = stackalloc float[childCount];
-            Span<float> durations  = stackalloc float[childCount];
+            int         childCount  = tree.children.Length;
+            Span<float> weights     = stackalloc float[childCount];
+            Span<float> frequencies = stackalloc float[childCount];
 
-            CalculateWeightsAndDurationsForFreeform(ref controller, ref clips, parameters, ref tree, weights, durations, out var accumulatedWeight);
+            CalculateWeightsAndFrequenciesForFreeform(ref controller, ref clips, parameters, ref tree, weights, frequencies, out var accumulatedWeight);
 
             float inverseTotalWeight = math.select(1f / accumulatedWeight, 0f, accumulatedWeight <= 0f);
             float result             = 0f;
             for (int i = 0; i < childCount; i++)
             {
-                result += inverseTotalWeight * weights[i] * durations[i];
+                result += inverseTotalWeight * weights[i] * frequencies[i];
             }
             return result;
         }
 
-        private static float GetBlendedMotionDurationDirect(ref MecanimControllerBlob controller,
-                                                            ref SkeletonClipSetBlob clips,
-                                                            ReadOnlySpan<MecanimParameter>      parameters,
-                                                            ref MecanimControllerBlob.BlendTree tree)
+        private static float GetBlendedMotionFrequencyDirect(ref MecanimControllerBlob controller,
+                                                             ref SkeletonClipSetBlob clips,
+                                                             ReadOnlySpan<MecanimParameter>      parameters,
+                                                             ref MecanimControllerBlob.BlendTree tree)
         {
-            var totalWeight   = 0f;
-            var totalDuration = 0f;
+            var totalWeight    = 0f;
+            var totalFrequency = 0f;
             for (int i = 0; i < tree.children.Length; i++)
             {
                 var weight = parameters[tree.parameterIndices[i]].floatParam;
                 if (weight > 0f)
                 {
-                    totalWeight   += weight;
-                    totalDuration += weight * math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller,
-                                                                                                              ref clips,
-                                                                                                              parameters,
-                                                                                                              tree.children[i].motionIndex);
+                    totalWeight    += weight;
+                    totalFrequency += weight * math.abs(tree.children[i].timeScale) * GetBlendedMotionFrequency(ref controller,
+                                                                                                                ref clips,
+                                                                                                                parameters,
+                                                                                                                tree.children[i].motionIndex);
                 }
             }
             if (totalWeight <= 0f)
                 return 0f;
-            return totalDuration / totalWeight;
+            return totalFrequency / totalWeight;
         }
         #endregion
 
@@ -630,26 +630,26 @@ namespace Latios.Mecanim
                                                         Span<float>                         weights,
                                                         out float accumulatedWeight)
         {
-            Span<float> durations = stackalloc float[0];
-            CalculateWeightsAndDurationsForFreeform(ref controller, ref clips, parameters, ref tree, weights, durations, out accumulatedWeight, true);
+            Span<float> frequencies = stackalloc float[0];
+            CalculateWeightsAndFrequenciesForFreeform(ref controller, ref clips, parameters, ref tree, weights, frequencies, out accumulatedWeight, true);
         }
 
-        private static void CalculateWeightsAndDurationsForFreeform(ref MecanimControllerBlob controller,
-                                                                    ref SkeletonClipSetBlob clips,
-                                                                    ReadOnlySpan<MecanimParameter>      parameters,
-                                                                    ref MecanimControllerBlob.BlendTree tree,
-                                                                    Span<float>                         weights,
-                                                                    Span<float>                         durations,
-                                                                    out float accumulatedWeight,
-                                                                    bool skipDurationCalculations = false)
+        private static void CalculateWeightsAndFrequenciesForFreeform(ref MecanimControllerBlob controller,
+                                                                      ref SkeletonClipSetBlob clips,
+                                                                      ReadOnlySpan<MecanimParameter>      parameters,
+                                                                      ref MecanimControllerBlob.BlendTree tree,
+                                                                      Span<float>                         weights,
+                                                                      Span<float>                         frequencies,
+                                                                      out float accumulatedWeight,
+                                                                      bool skipFrequencyCalculations = false)
         {
             // See https://runevision.com/thesis/rune_skovbo_johansen_thesis.pdf at 6.3 (p58) for details.
             // Freeform cartesian uses cartesian gradient bands, while freeform directional uses gradient
             // bands in polar space.
             var childCount = tree.children.Length;
-            if (!skipDurationCalculations)
+            if (!skipFrequencyCalculations)
             {
-                durations.Fill(-1f);
+                frequencies.Fill(-1f);
             }
 
             var blendParameters = new float2(parameters[tree.parameterIndices[0]].floatParam, parameters[tree.parameterIndices[1]].floatParam);
@@ -694,10 +694,10 @@ namespace Latios.Mecanim
                 accumulatedWeight += weights[i];
 
                 // We try to only sample the child nodes if they have nonzero weights.
-                // Populate child node duration for nonzero weights
-                if (!skipDurationCalculations && weights[i] > 0f)
+                // Populate child node frequency for nonzero weights
+                if (!skipFrequencyCalculations && weights[i] > 0f)
                 {
-                    durations[i] = math.abs(tree.children[i].timeScale) * GetBlendedMotionDuration(ref controller, ref clips, parameters, tree.children[i].motionIndex);
+                    frequencies[i] = math.abs(tree.children[i].timeScale) * GetBlendedMotionFrequency(ref controller, ref clips, parameters, tree.children[i].motionIndex);
                 }
             }
         }

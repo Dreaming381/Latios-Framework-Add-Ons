@@ -73,10 +73,10 @@ namespace Latios.Mecanim
             if (state.currentStateIndex < 0)
                 state = SetupInitialState(ref controllerBlob, stateMachineIndex, parameters, localTriggersToReset);
 
-            var                       normalizedDeltaTimeRemaining = 1f;
-            ref var                   stateMachineBlob             = ref controllerBlob.stateMachines[stateMachineIndex];
-            Span<CachedStateDuration> cachedStateDurations         = stackalloc CachedStateDuration[outputPassages.Length * 2];
-            int                       cachedStateDurationsCount    = 0;
+            var                        normalizedDeltaTimeRemaining = 1f;
+            ref var                    stateMachineBlob             = ref controllerBlob.stateMachines[stateMachineIndex];
+            Span<CachedStateFrequency> cachedStateFrequencies       = stackalloc CachedStateFrequency[outputPassages.Length * 2];
+            int                        cachedStateDurationsCount    = 0;
 
             // Set up relative layer weights that influence state durations.
             // Each layer splits its influence with all the layers below it based on the layer's weight.
@@ -117,7 +117,7 @@ namespace Latios.Mecanim
                     // There's no crossfades right now. Try to find an initial transition.
                     ref var stateBlob = ref stateMachineBlob.states[state.currentStateIndex];
                     // Lazily evaluated
-                    float currentStateDuration   = -1f;
+                    float currentStateFrequency  = -1f;
                     float stateNormalizedEndTime = 0f;
 
                     foreach (var matchedTransitionIndex in new TransitionEnumerator(ref stateMachineBlob.anyStateTransitions,
@@ -131,26 +131,26 @@ namespace Latios.Mecanim
                                      matchedTransitionIndex.index]);
                         if (transition.hasExitTime)
                         {
-                            if (currentStateDuration < 0f)
+                            if (currentStateFrequency < 0f)
                             {
                                 // Update lazy evaluations
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         state.currentStateIndex,
-                                                         ref currentStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          state.currentStateIndex,
+                                                          ref currentStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
                                 // current normalized time [0, 1] + realtime in timestep / duration = new normalized time
                                 // If duration is 0, set the end time to the end of the state (1)
-                                float scaledStateTimeDelta = stateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / currentStateDuration;
+                                float scaledStateTimeDelta = stateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * currentStateFrequency;
                                 if (stateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                     scaledStateTimeDelta *= parameters[stateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 stateNormalizedEndTime    = math.select(state.currentStateNormalizedTime + scaledStateTimeDelta,
                                                                         1f,
-                                                                        currentStateDuration == 0f);
+                                                                        !math.isfinite(currentStateFrequency));
                             }
 
                             // Check if our timestep in state wraps the exit time
@@ -166,7 +166,7 @@ namespace Latios.Mecanim
                                 currentTimeComparison = math.frac(math.abs(state.currentStateNormalizedTime));
                                 endTimeComparison     = math.frac(math.abs(stateNormalizedEndTime));
                             }
-                            if (currentStateDuration != 0f && (currentTimeComparison >= exitTime || endTimeComparison < exitTime))
+                            if (math.isfinite(currentStateFrequency) && (currentTimeComparison >= exitTime || endTimeComparison < exitTime))
                                 continue;
                         }
 
@@ -181,7 +181,7 @@ namespace Latios.Mecanim
                             var stateTime = transition.normalizedExitTime - math.select(math.abs(state.currentStateNormalizedTime),
                                                                                         math.frac(math.abs(state.currentStateNormalizedTime)),
                                                                                         transition.normalizedExitTime <= 1f);
-                            var stateDeltaTime         = stateTime * currentStateDuration;
+                            var stateDeltaTime         = stateTime / currentStateFrequency;
                             fractionOfDeltaTimeInState = stateDeltaTime / math.abs(scaledDeltaTime);
                         }
 
@@ -217,18 +217,18 @@ namespace Latios.Mecanim
                     if (state.nextStateTransitionIndex.invalid)
                     {
                         // There were no transitions. Just play the time in the state.
-                        if (currentStateDuration < 0f)
+                        if (currentStateFrequency < 0f)
                         {
-                            EvaluateAndCacheDuration(ref controllerBlob,
-                                                     ref clipsBlob,
-                                                     parameters,
-                                                     influencingLayerRelativeWeights,
-                                                     stateMachineIndex,
-                                                     state.currentStateIndex,
-                                                     ref currentStateDuration,
-                                                     ref cachedStateDurationsCount,
-                                                     cachedStateDurations);
-                            float scaledStateTimeDelta = stateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / currentStateDuration;
+                            EvaluateAndCacheFrequency(ref controllerBlob,
+                                                      ref clipsBlob,
+                                                      parameters,
+                                                      influencingLayerRelativeWeights,
+                                                      stateMachineIndex,
+                                                      state.currentStateIndex,
+                                                      ref currentStateFrequency,
+                                                      ref cachedStateDurationsCount,
+                                                      cachedStateFrequencies);
+                            float scaledStateTimeDelta = stateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * currentStateFrequency;
                             if (stateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                 scaledStateTimeDelta *= parameters[stateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                             stateNormalizedEndTime    = state.currentStateNormalizedTime + scaledStateTimeDelta;
@@ -267,10 +267,10 @@ namespace Latios.Mecanim
                     ref var nextStateBlob = ref stateMachineBlob.states[activeTransitionBlob.destinationStateIndex];
 
                     // These are lazily evaluated
-                    float currentStateDuration = -1f;
-                    float currentStateEndTime  = 0f;
-                    float nextStateDuration    = -1f;
-                    float nextStateEndTime     = 0f;
+                    float currentStateFrequency = -1f;
+                    float currentStateEndTime   = 0f;
+                    float nextStateFrequency    = -1f;
+                    float nextStateEndTime      = 0f;
 
                     // Check for interruptions to our existing transition
                     foreach (var matchedInterruption in new InterruptEnumerator(ref activeTransitionBlob,
@@ -297,34 +297,34 @@ namespace Latios.Mecanim
                             // We have an exit time. We need to check if we satisfy it. However, we have two separate state times.
                             // So we need to determine which one we care about based on where our interrupt comes from.
                             // For an Any interrupt, we can satisfy either exit time.
-                            if (matchedInterruption.from != MatchedInterrupt.From.Destination && currentStateDuration < 0f)
+                            if (matchedInterruption.from != MatchedInterrupt.From.Destination && currentStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         state.currentStateIndex,
-                                                         ref currentStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
-                                float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / currentStateDuration;
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          state.currentStateIndex,
+                                                          ref currentStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
+                                float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * currentStateFrequency;
                                 if (currentStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                     scaledStateTimeDelta *= parameters[currentStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 currentStateEndTime       = state.currentStateNormalizedTime + scaledStateTimeDelta;
                             }
-                            if (matchedInterruption.from != MatchedInterrupt.From.Source && nextStateDuration < 0f)
+                            if (matchedInterruption.from != MatchedInterrupt.From.Source && nextStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         activeTransitionBlob.destinationStateIndex,
-                                                         ref nextStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
-                                float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / nextStateDuration;
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          activeTransitionBlob.destinationStateIndex,
+                                                          ref nextStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
+                                float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * nextStateFrequency;
                                 if (nextStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                     scaledStateTimeDelta *= parameters[nextStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 nextStateEndTime          = state.nextStateNormalizedTime + scaledStateTimeDelta;
@@ -360,34 +360,34 @@ namespace Latios.Mecanim
                             }
 
                             // We are locking in to this interrupt with an exit time, so we need to find any missing end times
-                            if (currentStateDuration < 0f)
+                            if (currentStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         state.currentStateIndex,
-                                                         ref currentStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
-                                float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / currentStateDuration;
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          state.currentStateIndex,
+                                                          ref currentStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
+                                float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * currentStateFrequency;
                                 if (currentStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                     scaledStateTimeDelta *= parameters[currentStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 currentStateEndTime       = state.currentStateNormalizedTime + scaledStateTimeDelta;
                             }
-                            if (nextStateDuration < 0f)
+                            if (nextStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         activeTransitionBlob.destinationStateIndex,
-                                                         ref nextStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
-                                float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / nextStateDuration;
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          activeTransitionBlob.destinationStateIndex,
+                                                          ref nextStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
+                                float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * nextStateFrequency;
                                 if (nextStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                     scaledStateTimeDelta *= parameters[nextStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                                 nextStateEndTime          = state.nextStateNormalizedTime + scaledStateTimeDelta;
@@ -468,35 +468,35 @@ namespace Latios.Mecanim
                             newInertialBlendDurationRealtime = transition.duration;
                         else if (matchedInterruption.from != MatchedInterrupt.From.Destination)
                         {
-                            if (currentStateDuration < 0f)
+                            if (currentStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         state.currentStateIndex,
-                                                         ref currentStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          state.currentStateIndex,
+                                                          ref currentStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
                             }
-                            newInertialBlendDurationRealtime = transition.duration * currentStateDuration;
+                            newInertialBlendDurationRealtime = transition.duration / currentStateFrequency;
                         }
                         else
                         {
-                            if (nextStateDuration < 0f)
+                            if (nextStateFrequency < 0f)
                             {
-                                EvaluateAndCacheDuration(ref controllerBlob,
-                                                         ref clipsBlob,
-                                                         parameters,
-                                                         influencingLayerRelativeWeights,
-                                                         stateMachineIndex,
-                                                         activeTransitionBlob.destinationStateIndex,
-                                                         ref nextStateDuration,
-                                                         ref cachedStateDurationsCount,
-                                                         cachedStateDurations);
+                                EvaluateAndCacheFrequency(ref controllerBlob,
+                                                          ref clipsBlob,
+                                                          parameters,
+                                                          influencingLayerRelativeWeights,
+                                                          stateMachineIndex,
+                                                          activeTransitionBlob.destinationStateIndex,
+                                                          ref nextStateFrequency,
+                                                          ref cachedStateDurationsCount,
+                                                          cachedStateFrequencies);
                             }
-                            newInertialBlendDurationRealtime = transition.duration * nextStateDuration;
+                            newInertialBlendDurationRealtime = transition.duration / nextStateFrequency;
                         }
 
                         // Consume the amount of delta time we used up to the exit time (if any) and exit the loop through all interruptions
@@ -535,34 +535,34 @@ namespace Latios.Mecanim
                         }
 
                         // Determine our end times and our transition time.
-                        if (currentStateDuration < 0f)
+                        if (currentStateFrequency < 0f)
                         {
-                            EvaluateAndCacheDuration(ref controllerBlob,
-                                                     ref clipsBlob,
-                                                     parameters,
-                                                     influencingLayerRelativeWeights,
-                                                     stateMachineIndex,
-                                                     state.currentStateIndex,
-                                                     ref currentStateDuration,
-                                                     ref cachedStateDurationsCount,
-                                                     cachedStateDurations);
-                            float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / currentStateDuration;
+                            EvaluateAndCacheFrequency(ref controllerBlob,
+                                                      ref clipsBlob,
+                                                      parameters,
+                                                      influencingLayerRelativeWeights,
+                                                      stateMachineIndex,
+                                                      state.currentStateIndex,
+                                                      ref currentStateFrequency,
+                                                      ref cachedStateDurationsCount,
+                                                      cachedStateFrequencies);
+                            float scaledStateTimeDelta = currentStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * currentStateFrequency;
                             if (currentStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                 scaledStateTimeDelta *= parameters[currentStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                             currentStateEndTime       = state.currentStateNormalizedTime + scaledStateTimeDelta;
                         }
-                        if (nextStateDuration < 0f)
+                        if (nextStateFrequency < 0f)
                         {
-                            EvaluateAndCacheDuration(ref controllerBlob,
-                                                     ref clipsBlob,
-                                                     parameters,
-                                                     influencingLayerRelativeWeights,
-                                                     stateMachineIndex,
-                                                     activeTransitionBlob.destinationStateIndex,
-                                                     ref nextStateDuration,
-                                                     ref cachedStateDurationsCount,
-                                                     cachedStateDurations);
-                            float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime / nextStateDuration;
+                            EvaluateAndCacheFrequency(ref controllerBlob,
+                                                      ref clipsBlob,
+                                                      parameters,
+                                                      influencingLayerRelativeWeights,
+                                                      stateMachineIndex,
+                                                      activeTransitionBlob.destinationStateIndex,
+                                                      ref nextStateFrequency,
+                                                      ref cachedStateDurationsCount,
+                                                      cachedStateFrequencies);
+                            float scaledStateTimeDelta = nextStateBlob.baseStateSpeed * normalizedDeltaTimeRemaining * scaledDeltaTime * nextStateFrequency;
                             if (nextStateBlob.stateSpeedMultiplierParameterIndex >= 0)
                                 scaledStateTimeDelta *= parameters[nextStateBlob.stateSpeedMultiplierParameterIndex].floatParam;
                             nextStateEndTime          = state.nextStateNormalizedTime + scaledStateTimeDelta;
@@ -760,48 +760,48 @@ namespace Latios.Mecanim
             }
         }
 
-        struct CachedStateDuration
+        struct CachedStateFrequency
         {
             public int   stateIndex;
-            public float duration;
+            public float frequency;
         }
 
-        static void EvaluateAndCacheDuration(ref Blob controllerBlob,
-                                             ref SkeletonClipSetBlob clipsBlob,
-                                             ReadOnlySpan<MecanimParameter> parameters,
-                                             ReadOnlySpan<float>            influencingLayerRelativeWeights,
-                                             int stateMachineIndex,
-                                             int stateIndex,
-                                             ref float duration,
-                                             ref int cacheCount,
-                                             Span<CachedStateDuration>      cache)
+        static void EvaluateAndCacheFrequency(ref Blob controllerBlob,
+                                              ref SkeletonClipSetBlob clipsBlob,
+                                              ReadOnlySpan<MecanimParameter> parameters,
+                                              ReadOnlySpan<float>            influencingLayerRelativeWeights,
+                                              int stateMachineIndex,
+                                              int stateIndex,
+                                              ref float frequency,
+                                              ref int cacheCount,
+                                              Span<CachedStateFrequency>     cache)
         {
-            // First, check if we've already cached the duration
+            // First, check if we've already cached the frequency
             for (int i = 0; i < cacheCount; i++)
             {
                 if (cache[i].stateIndex == stateIndex)
                 {
-                    duration = cache[i].duration;
+                    frequency = cache[i].frequency;
                     return;
                 }
             }
 
-            ref var stateMachine        = ref controllerBlob.stateMachines[stateMachineIndex];
-            float   accumulatedDuration = 0f;
-            float   accumulatedWeight   = 0f;
+            ref var stateMachine         = ref controllerBlob.stateMachines[stateMachineIndex];
+            float   accumulatedFrequency = 0f;
+            float   accumulatedWeight    = 0f;
             for (int i = 0; i < stateMachine.influencingLayers.Length; i++)
             {
                 var motionIndex = controllerBlob.layers[stateMachine.influencingLayers[i]].motionIndices[stateIndex];
                 var weight      = influencingLayerRelativeWeights[i];
                 if (weight > 0f)
                 {
-                    accumulatedWeight   += weight;
-                    accumulatedDuration += weight * MotionEvaluation.GetBlendedMotionDuration(ref controllerBlob, ref clipsBlob, parameters, motionIndex);
+                    accumulatedWeight    += weight;
+                    accumulatedFrequency += weight * MotionEvaluation.GetBlendedMotionFrequency(ref controllerBlob, ref clipsBlob, parameters, motionIndex);
                 }
             }
 
-            duration          = math.select(accumulatedDuration / accumulatedWeight, 0f, accumulatedWeight == 0f);
-            cache[cacheCount] = new CachedStateDuration { duration = duration, stateIndex = stateIndex };
+            frequency         = math.select(accumulatedFrequency / accumulatedWeight, 0f, accumulatedWeight == 0f);
+            cache[cacheCount] = new CachedStateFrequency { frequency = frequency, stateIndex = stateIndex };
             cacheCount++;
         }
 
