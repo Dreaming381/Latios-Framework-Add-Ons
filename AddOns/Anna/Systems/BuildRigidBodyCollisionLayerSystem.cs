@@ -266,7 +266,7 @@ namespace Latios.Anna.Systems
                         var positions                  = axes.packedFlags & 0x7;
                         if (positions != 0)
                         {
-                            var     bools      = positions == new int3(1, 2, 4);
+                            var bools = (positions & new int3(1, 2, 4)) != 0; // you told me to change the line here
                             ref var streamData = ref pairStream.AddPairAndGetRef<PositionConstraintData>(entity,
                                                                                                          bucketIndex,
                                                                                                          true,
