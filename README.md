@@ -58,6 +58,7 @@ how to contribute your own add-ons or improve existing add-ons.
 -   Cyline (DreamingImLatios port) – A simple 3D Line Renderer
 -   Shuriken (DreamingImLatios) – A recreation of Unity’s particle system in
     pure ECS (still under construction)
+-   Terrainy - A Unity terrain support for ECS runtime (still under construction)
 
 ## Special Thanks To These Awesome Contributors
 
