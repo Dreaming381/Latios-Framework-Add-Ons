@@ -44,7 +44,8 @@ namespace Latios.Terrainy.Authoring
 
 			AddComponent(entity, new TerrainDataComponent
 			{
-				TerrainData = clonedTerrainData
+				TerrainData = clonedTerrainData,
+				TerrainMat= authoring.materialTemplate
 			});
 		}
 	}
