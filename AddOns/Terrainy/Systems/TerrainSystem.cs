@@ -31,27 +31,8 @@ namespace Latios.Terrainy.Systems
 					Terrain = terrain
 				});
 			}
-
-
-			// 2) Update/sync: Entities that have both components. Probably not needed?
-			/*foreach (var (terrainComp, terrainDataComp, entity) in SystemAPI
-			         .Query<RefRW<TerrainComponent>, RefRO<TerrainDataComponent>>()
-			         .WithEntityAccess())
-			{
-				var terrain = terrainComp.ValueRO.Terrain.Value;
-				if (terrain == null)
-				{
-					var go = new GameObject("DOTS Terrain");
-					terrain = go.AddComponent<Terrain>();
-					terrainComp.ValueRW.Terrain = terrain;
-				}
-
-				if (terrain.terrainData != terrainDataComp.ValueRO.TerrainData)
-					terrain.terrainData = terrainDataComp.ValueRO.TerrainData;
-			}*/
-
 			
-			// 3) Teardown: Entities that have a TerrainComponent but no TerrainDataComponent.
+			// 2) Teardown: Entities that have a TerrainComponent but no TerrainDataComponent.
 			foreach (var (terrainComp, entity) in SystemAPI
 				         .Query<RefRO<TerrainComponent>>()
 				         .WithNone<TerrainDataComponent>()
