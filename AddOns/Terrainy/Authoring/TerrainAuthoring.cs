@@ -1,52 +1,54 @@
 ﻿using Latios.Terrainy.Components;
+using Unity.Burst;
 using Unity.Entities;
 using UnityEngine;
 
 namespace Latios.Terrainy.Authoring
 {
-	public class TerrainAuthoring : Baker<Terrain>
-	{
-		public override void Bake(Terrain authoring)
-		{
-			var entity = GetEntity(TransformUsageFlags.Renderable);
+    [DisableAutoCreation]
+    public class TerrainAuthoring : Baker<Terrain>
+    {
+        public override void Bake(Terrain authoring)
+        {
+            var entity = GetEntity(TransformUsageFlags.Renderable);
 
-			TerrainData src = authoring.terrainData;
+            TerrainData data = authoring.terrainData;
+            DependsOn(data);
 
-			var clonedTerrainData = new TerrainData();
-			clonedTerrainData.name = src.name;
+            // Modifying the heightmap in the editor does not cause TerrainData to propagate as a changed object and trigger a rebake.
+            // Therefore, we need to use the same TerrainData for runtime that we use for authoring while in the editor, and can only
+            // strip the trees and details for a build.
+            if (!IsBakingForEditor())
+            {
+                data = Object.Instantiate(data);
 
-#region Heights and size
+                // Todo: This probably needs more testing and iteration.
+                data.detailPrototypes = null;
+                data.treeInstances    = new TreeInstance[0];
+                data.treePrototypes   = null;
+            }
 
-			clonedTerrainData.heightmapResolution = src.heightmapResolution;
-			clonedTerrainData.size = src.size;
-			int heightmapResolution = src.heightmapResolution;
-			float[,] heights = src.GetHeights(0, 0, heightmapResolution, heightmapResolution);
-			clonedTerrainData.SetHeights(0, 0, heights);
+            AddComponent(entity, new TerrainDataComponent
+            {
+                TerrainData = data,
+                TerrainMat  = authoring.materialTemplate
+            });
+            AddComponent<TerrainLiveBakedTag>(entity);
+        }
+    }
 
-#endregion Heights and size
-
-#region Terrain layers, splatmaps (alphamaps) and holes
-
-			clonedTerrainData.terrainLayers = src.terrainLayers;
-			clonedTerrainData.alphamapResolution = src.alphamapResolution;
-			int aWidth = src.alphamapWidth;
-			int aHeight = src.alphamapHeight;
-			float[,,] alphamaps = src.GetAlphamaps(0, 0, aWidth, aHeight);
-			clonedTerrainData.SetAlphamaps(0, 0, alphamaps);
-			int holesRes = src.holesResolution;
-			if (holesRes > 0)
-			{
-				bool[,] holes = src.GetHoles(0, 0, holesRes, holesRes);
-				clonedTerrainData.SetHoles(0, 0, holes);
-			}
-
-#endregion
-
-			AddComponent(entity, new TerrainDataComponent
-			{
-				TerrainData = clonedTerrainData,
-				TerrainMat= authoring.materialTemplate
-			});
-		}
-	}
+    [DisableAutoCreation]
+    [RequireMatchingQueriesForUpdate]
+    [WorldSystemFilter(WorldSystemFilterFlags.EntitySceneOptimizations)]
+    public partial struct RemoveTerrainLiveBakedSystem : ISystem
+    {
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var query =
+                SystemAPI.QueryBuilder().WithPresent<TerrainLiveBakedTag>().WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IncludePrefab).Build();
+            state.EntityManager.RemoveComponent<TerrainLiveBakedTag>(query);
+        }
+    }
 }
+
