@@ -1,5 +1,8 @@
 ﻿using System.Runtime.CompilerServices;
+using Latios.Psyshock;
+using Latios.Transforms;
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace Latios.FlowFieldNavigation
@@ -7,6 +10,12 @@ namespace Latios.FlowFieldNavigation
     [BurstCompile]
     public static class FieldExtensions
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsValidCell(this Field field, int2 cell)
+        {
+            return Grid.IsValidCell(cell, field.Width, field.Height);
+        }
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float3 GetLocalPosition(this Field field, float3 worldPosition)
         {
@@ -21,16 +30,29 @@ namespace Latios.FlowFieldNavigation
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float GetSpeedFactor(this Field field, int index)
         {
-            var density = field.DensityMap[index];
+            var density = field.GetDensity(index);
             var velocity = field.MeanVelocityMap[index];
-            var length = math.length(velocity);
-            return math.lerp(1, length, math.saturate(density));
+            var count = field.UnitsCountMap[index];
+            var speed = math.length(velocity / count);
+            return math.lerp(1, math.saturate(speed), math.saturate(density / FlowSettings.MaxDensity));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float GetDensity(this Field field, int index)
+        {
+            return math.select(field.DensityMap[index], 0, field.UnitsCountMap[index] <= 1);
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float3 GetGridOffset(this Field field)
         {
             return new float3(-field.Width * field.CellSize.x * field.Pivot.x, 0, -field.Height * field.CellSize.y * field.Pivot.y);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float3 GetGridOffset(this FieldSettings field)
+        {
+            return new float3(-field.FieldSize.x * field.CellSize.x * field.Pivot.x, 0, -field.FieldSize.y * field.CellSize.y * field.Pivot.y);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -49,7 +71,7 @@ namespace Latios.FlowFieldNavigation
         public static float3 CellToWorld(this Field field, int2 cell)
         {
             var index = Grid.CellToIndex(field.Width, cell);
-            return field.CellColliders[index].transform.position;
+            return field.TransformsMap[index].position;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -60,48 +82,43 @@ namespace Latios.FlowFieldNavigation
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float3 IndexToWorld(this FieldSettings field, TransformQvvs fieldTransform, int index)
+        {
+            var cell = Grid.IndexToCell(index, field.FieldSize.x);
+            return CellToWorld(cell, field.GetGridOffset(), field.CellSize, fieldTransform.position, fieldTransform.rotation);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryWorldToCell(this Field field, float3 worldPosition, out int2 cell)
         {
             cell = WorldToCell(worldPosition, field.GetGridOffset(), field.CellSize, field.Transform.Value.position, field.Transform.Value.rotation);
             return Grid.IsValidCell(cell, field.Width, field.Height);
         }
         
-        public static bool TryWorldToFootprint(this Field field, float3 worldPosition, out int4 footprint, out float2 interpolation)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryWorldToFootprint(this Field field, float3 worldPosition, int2 footprintSize, out int4 footprint)
         {
             var localPos = worldPosition - field.Transform.Value.position;
             var invRotation = math.inverse(field.Transform.Value.rotation);
             var unrotatedPos = math.rotate(invRotation, localPos);
             var adjustedPos = unrotatedPos - field.GetGridOffset();
 
-            var gridCoords = new float2(adjustedPos.x / field.CellSize.x, adjustedPos.z / field.CellSize.y);
-            var relativeCoords = gridCoords - 0.5f;
-            var cell00 = new int2((int)math.floor(relativeCoords.x), (int)math.floor(relativeCoords.y));
-            interpolation = relativeCoords - cell00;
+            var gridCoords = new float2(
+                adjustedPos.x / field.CellSize.x,
+                adjustedPos.z / field.CellSize.y
+            );
 
-            var minX = int.MaxValue;
-            var minY = int.MaxValue;
-            var maxX = int.MinValue;
-            var maxY = int.MinValue;
-            var foundValid = false;
+            var centerOffset = math.select(0f, 0.5f, footprintSize % 2 == 0);
+            var centerCell = (int2)math.floor(gridCoords + centerOffset);
     
-            for (var dx = 0; dx < 2; dx++)
-            {
-                for (var dy = 0; dy < 2; dy++)
-                {
-                    var cell = cell00 + new int2(dx, dy);
-                    if (!Grid.IsValidCell(cell, field.Width, field.Height)) continue;
-                    foundValid = true;
-                    minX = math.min(minX, cell.x);
-                    minY = math.min(minY, cell.y);
-                    maxX = math.max(maxX, cell.x);
-                    maxY = math.max(maxY, cell.y);
-                }
-            }
+            var minX = centerCell.x - footprintSize.x / 2;
+            var minY = centerCell.y - footprintSize.y / 2;
+            var maxX = minX + footprintSize.x - 1;
+            var maxY = minY + footprintSize.y - 1;
 
-            if (!foundValid)
+            if (minX >= field.Width || maxX < 0 || minY >= field.Height || maxY < 0)
             {
                 footprint = default;
-                interpolation = default;
                 return false;
             }
 
@@ -141,6 +158,18 @@ namespace Latios.FlowFieldNavigation
         {
             var cell = WorldToCell(worldPosition, gridOffset, cellSize, gridPosition, gridRotation);
             return Grid.CellToIndex(width, cell);
+        }
+
+        public static Aabb GetAabb(this Field field)
+        {
+            var tranform = field.Transform.Value;
+            var halfSize = new float2(field.Width, field.Height) * 0.5f;
+            var localAabb = new Aabb
+            {
+                min = new float3(-halfSize.x, 0f, -halfSize.y),
+                max = new float3(halfSize.x, 0f, halfSize.y)
+            };
+            return Physics.TransformAabb(tranform, localAabb);
         }
     }
 }

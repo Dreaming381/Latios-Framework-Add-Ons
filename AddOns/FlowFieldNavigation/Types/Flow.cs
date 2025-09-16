@@ -13,9 +13,11 @@ namespace Latios.FlowFieldNavigation
         public bool IsCreated {get; private set;}
 
         internal NativeReference<TransformQvvs> Transform;
-        internal NativeList<int2> GoalCells;
+        internal NativeHashSet<int2> GoalCells;
         internal NativeArray<float> Costs;
         internal NativeArray<float2> DirectionMap;
+        
+        
 
         internal FlowSettings Settings;
 
@@ -26,7 +28,7 @@ namespace Latios.FlowFieldNavigation
             var length = field.Width * field.Height;
             Costs = CollectionHelper.CreateNativeArray<float>(length, allocator);
             DirectionMap = CollectionHelper.CreateNativeArray<float2>(length, allocator);
-            GoalCells = new NativeList<int2>(allocator);
+            GoalCells = new NativeHashSet<int2>(FlowSettings.MaxFootprintSize, allocator);
             IsCreated = true;
         }
 

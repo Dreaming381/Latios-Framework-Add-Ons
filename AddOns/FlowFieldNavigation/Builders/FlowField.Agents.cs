@@ -26,12 +26,13 @@ namespace Latios.FlowFieldNavigation
         /// Adds these required components:
         /// - WorldTransform (read-only)
         /// - AgentDirection (required for movement direction)
+        /// - AgentFootprint (required for density calculations)
         /// - PrevPosition (required for movement history)
         /// - Velocity (required for current movement state)
         /// </remarks>
         public static FluentQuery PatchQueryForFlowFieldAgents(this FluentQuery fluent)
         {
-            return fluent.WithWorldTransformReadOnly().With<AgentDirection>().With<PrevPosition>().With<Velocity>();
+            return fluent.WithWorldTransformReadOnly().With<AgentDirection>().With<PrevPosition>().With<Velocity>().With<AgentFootprint>().With<AgentDensity>();
         }
 
         /// <summary>
