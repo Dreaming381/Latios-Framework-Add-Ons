@@ -21,8 +21,10 @@ namespace Latios.FlowFieldNavigation
     {
         internal FieldSettings FieldSettings;
         internal TransformQvvs Transform;
-        internal CollisionLayer ObstaclesLayer;
         internal BuildAgentsConfig AgentsConfig;
+        internal CollisionLayer ObstaclesLayer;
+        internal CollisionWorld CollisionWorld;
+        internal EntityQueryMask ObstaclesMask;
 
         internal bool HasObstaclesLayer;
         internal bool HasAgentsQuery;
@@ -88,6 +90,21 @@ namespace Latios.FlowFieldNavigation
         {
             config.HasObstaclesLayer = true;
             config.ObstaclesLayer = obstaclesLayer;
+            return config;
+        }
+
+        /// <summary>
+        /// Configures obstacles for the field.
+        /// </summary>
+        /// <param name="config">Configuration to modify</param>
+        /// <param name="collisionWorld">Collision world containing obstacles</param>
+        /// <param name="obstaclesMask">Obstacles mask</param>
+        /// <returns>Modified configuration</returns>
+        public static BuildFieldConfig WithObstacles(this BuildFieldConfig config, in CollisionWorld collisionWorld, in EntityQueryMask obstaclesMask)
+        {
+            config.HasObstaclesLayer = true;
+            config.CollisionWorld = collisionWorld;
+            config.ObstaclesMask = obstaclesMask;
             return config;
         }
 
@@ -256,8 +273,13 @@ namespace Latios.FlowFieldNavigation
         static JobHandle ProcessObstaclesLayer(this BuildFieldConfig config, in Field field, JobHandle dependency)
         {
             if (!config.HasObstaclesLayer) return dependency;
-            var jobHandle = Physics.FindObjects(field.GetAabb(), in config.ObstaclesLayer, new FlowFieldInternal.ObstaclesProcessor { Field = field }).ScheduleSingle(dependency);
-            return jobHandle;
+            
+            if (config.ObstaclesLayer.IsCreated)
+            {
+                return Physics.FindObjects(field.GetAabb(), in config.ObstaclesLayer, new FlowFieldInternal.ObstaclesProcessor { Field = field }).ScheduleSingle(dependency);
+            }
+
+            return Physics.FindObjects(field.GetAabb(), in config.CollisionWorld, new FlowFieldInternal.ObstaclesProcessor { Field = field }).ScheduleSingle(config.ObstaclesMask, dependency);
         }
 
         #endregion
