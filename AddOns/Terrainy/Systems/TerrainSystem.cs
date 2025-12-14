@@ -1,7 +1,6 @@
 ﻿using Latios.Systems;
 using Latios.Terrainy.Components;
 using Latios.Transforms.Abstract;
-using Latios.Transforms;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -9,7 +8,6 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
-using Random = Unity.Mathematics.Random;
 
 namespace Latios.Terrainy.Systems
 {
@@ -111,84 +109,62 @@ namespace Latios.Terrainy.Systems
 		void CreateVegetationAndDetailEntities(ref SystemState state, NativeArray<Entity> terrainEntities)
 		{
 			var entityManager = state.EntityManager;
+			var commandBuffer = new EntityCommandBuffer(state.WorldUpdateAllocator);
 		
 			foreach (var terrainEntity in terrainEntities)
 			{
 				var detailCellElements = SystemAPI.GetBuffer<DetailCellElement>(terrainEntity);
 				var detailInstanceElements = SystemAPI.GetBuffer<DetailsInstanceElement>(terrainEntity);
-				var createdDetails = new NativeList<Entity>((int)(detailCellElements.Length * 1.5f), Allocator.Temp);
+				var createdDetails = new NativeList<Entity>(detailCellElements.Length, Allocator.Temp);
 
 				foreach (var detailCellElement in detailCellElements)
 				{
-					DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
-					// Todo: Create decoration entities for textures.
-					if (correspondingInstance.UseMesh == 0) continue;
-					for (var index = 0; index < detailCellElement.Count; index++)
-					{
+						DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
 						Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
 						createdDetails.Add(instance);
 						// Position the instance
 						#if LATIOS_TRANSFORMS_UNITY
 						var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity);
-						if (!entityManager.HasComponent<LocalTransform>(instance)) continue;
-						var lt = entityManager.GetComponentData<LocalTransform>(instance);
+						LocalTransform lt;
+						if (!entityManager.HasComponent<LocalTransform>(instance))
+						{
+							lt = new LocalTransform();
+							commandBuffer.AddComponent(instance, lt);
+						}
+						else
+						{
+							lt = entityManager.GetComponentData<LocalTransform>(instance);
+						}
+						
 						#else
 						// TODO make it work with qvvs
 						var wt = SystemAPI.GetComponent<WorldTransform>();
 						var lt;
 						#endif
-						// Local cell-space placement (XZ plane), 1 unit per cell
-						const float cellSize = 1.0f;
-
-						// Stable hash for per-instance randomness
-						int2 cords = detailCellElement.Coord;
 						
-						uint seed = math.hash(new uint3((uint)cords.x, (uint)cords.y, (uint)index));
-						var random = new Random(seed);
-
-						// Random jitter within the cell
-						float jx = random.NextFloat(0, 1);
-						float jz = random.NextFloat(0, 1);
-
-						// Random yaw
-						float yaw = random.NextFloat(0, 1) * (2f * math.PI);
-
-						// Random size between min/max
-						float2 minSize = correspondingInstance.MinSize;
-						float2 maxSize = correspondingInstance.MaxSize;
-						float rw = math.lerp(minSize.x * lt.Scale, maxSize.x * lt.Scale, random.NextFloat(0, 1));
-						float rh = math.lerp(minSize.y * lt.Scale, maxSize.y * lt.Scale, random.NextFloat(0, 1));
-
-						// Choose a uniform scale representative (mesh: height-driven, else width-driven)
-						float uniformScale = correspondingInstance.UseMesh != 0 ? rh : rw;
-
-						// Compose local position inside terrain local space
-						var localPos = new float3(
-							(cords.x + jx) * cellSize,
-							0f,
-							(cords.y + jz) * cellSize
-						);
+						float3 cords = detailCellElement.Coord;
+						//Debug.Log($"X: {cords.x}, Y: {cords.y}, Z: {cords.z}");
 
 						// Transform to world using terrain's LocalToWorld
-						float3 worldPos = math.transform(wt.Value, localPos);
+						float3 worldPos = math.transform(wt.Value, cords);
 
 						// Build final transform
 						lt.Position = worldPos;
-						lt.Rotation = quaternion.AxisAngle(math.up(), yaw);
-						lt.Scale = uniformScale;
-						entityManager.SetComponentData(instance, lt);
-
-					}
+						if(correspondingInstance.RenderMode != UnityEngine.DetailRenderMode.GrassBillboard) {
+							lt.Rotation = quaternion.RotateY(detailCellElement.RotationY);
+						}
+						lt.Scale = detailCellElement.Scale.x;
+						commandBuffer.SetComponent(instance, lt);
 				}
 
 
 				var decorationsGroupEntity = state.EntityManager.CreateEntity();
 				var leg = state.EntityManager.AddBuffer<LinkedEntityGroup>(decorationsGroupEntity).Reinterpret<Entity>();
-				// Todo: Assign decoration entities to leg
 				leg.AddRange(createdDetails.AsArray());
 
 				var terrainComp = state.EntityManager.GetComponentData<TerrainComponent>(terrainEntity);
 				terrainComp.DecorationsGroupEntity = decorationsGroupEntity;
+				commandBuffer.Playback(entityManager);
 				state.EntityManager.SetComponentData(terrainEntity, terrainComp);
 			}
 		}

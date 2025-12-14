@@ -1,10 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Latios.Kinemation.Authoring;
 using Latios.Terrainy.Components;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 
 namespace Latios.Terrainy.Authoring
@@ -12,6 +16,15 @@ namespace Latios.Terrainy.Authoring
 	[DisableAutoCreation]
 	public class TerrainAuthoring : Baker<Terrain>
 	{
+		private static readonly int HealthyColor = Shader.PropertyToID("_HealthyColor");
+		private static readonly int DryColor = Shader.PropertyToID("_DryColor");
+		private static readonly int Billboard = Shader.PropertyToID("_Billboard");
+		private static readonly int Lerp = Shader.PropertyToID("_Lerp");
+		private static readonly int Speed = Shader.PropertyToID("_Speed");
+		private static readonly int Bending = Shader.PropertyToID("_Bending");
+		private static readonly int Size = Shader.PropertyToID("_Size");
+		private static readonly int GrassTint = Shader.PropertyToID("_GrassTint");
+		
 		public override void Bake(Terrain authoring)
 		{
 			var entity = GetEntity(TransformUsageFlags.Renderable);
@@ -27,8 +40,8 @@ namespace Latios.Terrainy.Authoring
 			NativeArray<DetailsInstanceElement> detailPrototypesArray = new NativeArray<DetailsInstanceElement>(data.detailPrototypes.Length, Allocator.Temp);
 			NativeList<DetailCellElement> detailCells = new NativeList<DetailCellElement>(Allocator.Temp);;
 
-			if (!IsBakingForEditor())
-			{
+			//if (!IsBakingForEditor())
+			//{
 				data = Object.Instantiate(data);
 				// TODO Probably defer this to a system, so that we can have one global list instead of multiple which might share the same entities 
 				for (int i = 0; i < data.treePrototypes.Length; i++)
@@ -56,7 +69,15 @@ namespace Latios.Terrainy.Authoring
 				}
 				var detailResolution = data.detailResolution;
 				var detailPrototypeCount = data.detailPrototypes.Length;
-
+				var quadMesh = new Mesh();
+				quadMesh.SetVertices(new List<Vector3> {
+					new Vector3(-0.5f, 0f, 0f), new Vector3(0.5f, 0f, 0f), new Vector3(-0.5f, 1f, 0f), new Vector3(0.5f, 1f, 0f)
+				});
+				quadMesh.SetUVs(0, new List<Vector2> {
+					new Vector2(0,0), new Vector2(1,0), new Vector2(0,1), new Vector2(1,1)
+				});
+				quadMesh.SetIndices(new[]{0,2,1, 1,2,3}, MeshTopology.Triangles, 0, true);
+				quadMesh.RecalculateBounds();
 				for (var i = 0; i < detailPrototypeCount; i++)
 				{
 					ref readonly DetailPrototype detailPrototype = ref data.detailPrototypes[i];
@@ -69,40 +90,69 @@ namespace Latios.Terrainy.Authoring
 					}
 					else
 					{
-						//detailPrototype.prototypeTexture;
+						// TODO this renders at 0,0, which should not happen
 						detailPrefabEntity = CreateAdditionalEntity(TransformUsageFlags.Dynamic);
-						
+						var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
+						var material = new Material(shader)
+						{
+							enableInstancing = true,
+							mainTexture = detailPrototype.prototypeTexture,
+							name = $"GrasMat_{i}"
+						};
+						#if UNITY_EDITOR
+						// Fixes Unity Editor bug with an open subscene
+						material.SetKeyword(new LocalKeyword(shader, "_SURFACE_TYPE_TRANSPARENT"), true);
+						material.SetKeyword(new LocalKeyword(shader, "_ALPHATEST_ON"), true);
+						#endif
+						// this is deactivated on the billboard? why tho
+						material.SetColor(HealthyColor,  detailPrototype.healthyColor);
+						material.SetColor(DryColor,  detailPrototype.dryColor);
+						material.SetFloat(Billboard, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 1 : 0);
+						material.SetFloat(Lerp, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 0 : 1);
+						// don't worry I don't understand why speed = strength and size is speed, unity naming I guess lol
+						material.SetFloat(Speed, authoring.terrainData.wavingGrassStrength);
+						material.SetFloat(Bending, authoring.terrainData.wavingGrassAmount);
+						material.SetFloat(Size, authoring.terrainData.wavingGrassSpeed);
+						material.SetColor(GrassTint, authoring.terrainData.wavingGrassTint);
+						var meshRendererBakeSettings = new MeshRendererBakeSettings()
+						{
+							targetEntity = detailPrefabEntity,
+							isDeforming = false,
+							isStatic = true,
+							lightmapIndex = 0,
+							lightmapScaleOffset = float4.zero,
+							localBounds = new Bounds(new Vector3(0, 0, 0), new Vector3(1, 1, 0)),
+							renderMeshDescription = new RenderMeshDescription(ShadowCastingMode.Off),
+							suppressDeformationWarnings = true,
+							useLightmapsIfPossible = true
+						};
+						this.BakeMeshAndMaterial(meshRendererBakeSettings, quadMesh, material);
 					}
 
 					detailPrototypesArray[i] = new DetailsInstanceElement()
 					{
 						Prefab = detailPrefabEntity,
-						HealthyColor = PackColor32(detailPrototype.healthyColor),
-						DryColor = PackColor32(detailPrototype.dryColor),
 						MinSize = new half2((half)detailPrototype.minWidth, (half)detailPrototype.minHeight),
 						MaxSize = new half2((half)detailPrototype.maxWidth, (half)detailPrototype.maxHeight),
-						NoiseSpread = (half)detailPrototype.noiseSpread,
 						UseMesh = (byte)(detailPrototype.usePrototypeMesh ? 1 : 0),
-						RenderMode = (byte)detailPrototype.renderMode,
-						AlignToGround = new half(detailPrototype.alignToGround),
+						RenderMode = detailPrototype.renderMode,
 					};
-					
-					int[,] layer = data.GetDetailLayer(0, 0, detailResolution, detailResolution, i);
-					// Convert dense 2D array to sparse cell elements (skip zeros)
-					for (int y = 0; y < detailResolution; y++)
+					// Get details per patch, since the method is c++ internal and im not sure how they compute, get it over the method
+					for (int y = 0; y < detailResolution; y += data.detailResolutionPerPatch)
 					{
-						for (int x = 0; x < detailResolution; x++)
+						for (int x = 0; x < detailResolution; x += data.detailResolutionPerPatch)
 						{
-							int count = layer[y, x];
-							if (count <= 0)
-								continue;
-
-							detailCells.Add(new DetailCellElement
+							var transforms = data.ComputeDetailInstanceTransforms(x / data.detailResolutionPerPatch, y / data.detailResolutionPerPatch, i, detailPrototype.density, out Bounds bounds);
+							foreach (var transform in transforms)
 							{
-								Coord = new int2(x, y),
-								Count = (ushort)math.clamp(count, 0, ushort.MaxValue),
-								PrototypeIndex = (ushort)math.clamp(i, 0, ushort.MaxValue),
-							});
+								detailCells.Add(new DetailCellElement
+								{
+									Coord = new float3(transform.posX, transform.posY, transform.posZ),
+									Scale = new float2(transform.scaleXZ, transform.scaleY),
+									RotationY = transform.rotationY,
+									PrototypeIndex = (ushort)math.clamp(i, 0, ushort.MaxValue),
+								});
+							}
 						}
 					}
 				}
@@ -111,7 +161,7 @@ namespace Latios.Terrainy.Authoring
 				data.detailPrototypes = null;
 				data.treeInstances = Array.Empty<TreeInstance>();
 				data.treePrototypes = null;
-			}
+			//}
 
 			if (detailPrototypesArray.IsCreated)
 			{
