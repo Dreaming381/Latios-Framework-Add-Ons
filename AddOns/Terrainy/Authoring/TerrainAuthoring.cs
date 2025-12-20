@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Latios.Kinemation.Authoring;
 using Latios.Terrainy.Components;
 using Unity.Collections;
@@ -62,7 +61,7 @@ namespace Latios.Terrainy.Authoring
 					{
 						Position = new float3((position.x * data.size.x) + terrainPosition.x , (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
 						Scale = new half2(new half(treeInstance.widthScale),  new half(treeInstance.heightScale)),
-						PackedRotation = EncodeRotation(treeInstance.rotation),
+						Rotation = treeInstance.rotation,
 						PrototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
 					};
 				}
@@ -184,13 +183,6 @@ namespace Latios.Terrainy.Authoring
 				TerrainMat = authoring.materialTemplate
 			});
 			AddComponent<TerrainLiveBakedTag>(entity);
-		}
-
-		private static ushort EncodeRotation(float radians)
-		{
-			float a = math.fmod(radians, 2f * math.PI);
-			if (a < 0) a += 2f * math.PI;
-			return (ushort)math.round(a * (65535f / (2f * math.PI)));
 		}
 	}
 

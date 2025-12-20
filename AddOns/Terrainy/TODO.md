@@ -12,12 +12,12 @@ Thanks to Dreaming I'm Latios for providing this list
     constructs a new GameObject with a Terrain component and assigns it the
     TerrainData, or destroys the Terrain GameObject if the TerrainData component
     is missing (teardown).
--   [ ] Find all the source prefabs associated with the tree and detail
+-   [x] Find all the source prefabs associated with the tree and detail
     prototypes in the terrain and bake entity prefabs for those to put on the
     terrain.
--   [ ] Bake all tree and detail instance data into dynamic buffers, at least
+-   [x] Bake all tree and detail instance data into dynamic buffers, at least
     for closed subscenes.
--   [ ] In the reactive system, spawn the trees and details as entities, and
+-   [x] In the reactive system, spawn the trees and details as entities, and
     maybe gather and respawn all entities during live baking.
 -   [ ] Figure out some mechanism so that we have terrain tree/detail shaders at
     authoring and DOTS shaders at runtime.
@@ -26,3 +26,9 @@ Thanks to Dreaming I'm Latios for providing this list
     their own entities at runtime. Might need to rebuild colliders at runtime
     for live-baked entities.
 -   [ ] Validate builds have all unnecessary TerrainData stripped.
+
+# Other Todos
+-   [ ] Group terrain prefabs in probably blackboards
+-   [ ] Grass Shader seems very expensive, investigate and doesn't support ortographic camera with billboard support
+-   [ ] Support qvvs from latios for details/trees
+-   [ ] Add HDRP to the shader (needs to be open in a HDRP project for that)
