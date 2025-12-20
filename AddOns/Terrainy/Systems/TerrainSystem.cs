@@ -115,36 +115,51 @@ namespace Latios.Terrainy.Systems
 			{
 				var detailCellElements = SystemAPI.GetBuffer<DetailCellElement>(terrainEntity);
 				var detailInstanceElements = SystemAPI.GetBuffer<DetailsInstanceElement>(terrainEntity);
-				var createdDetails = new NativeList<Entity>(detailCellElements.Length, Allocator.Temp);
+				var treeInstances = SystemAPI.GetBuffer<TreeInstanceElement>(terrainEntity);
+				var createdDetails = new NativeList<Entity>(detailCellElements.Length + treeInstances.Length, Allocator.Temp);
+#if LATIOS_TRANSFORMS_UNITY
+				// TODO make this work with qvvs
+				var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity);
+#endif
 
 				foreach (var detailCellElement in detailCellElements)
 				{
 						DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
 						Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
 						createdDetails.Add(instance);
-						// Position the instance
-						#if LATIOS_TRANSFORMS_UNITY
-						var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity);
-						#else
-						// TODO make it work with qvvs
-						var wt = SystemAPI.GetComponent<WorldTransform>();
-						var lt;
-						#endif
 						
-						float3 cords = detailCellElement.Coord;
+						float3 worldPos = detailCellElement.Coord;
 						//Debug.Log($"X: {cords.x}, Y: {cords.y}, Z: {cords.z}");
-
-						// Transform to world using terrain's LocalToWorld
-						float3 worldPos = math.transform(wt.Value, cords);
 						
 						// Build final transform
 						quaternion rotation = new quaternion();
-						if(correspondingInstance.RenderMode != UnityEngine.DetailRenderMode.GrassBillboard) {
+						if(correspondingInstance.RenderMode != DetailRenderMode.GrassBillboard) {
 							rotation = quaternion.RotateY(detailCellElement.RotationY);
 						}
 						var scale =  detailCellElement.Scale.x;
 						wt.Value = float4x4.TRS(worldPos, rotation, scale);
 						commandBuffer.SetComponent(instance, wt);
+				}
+
+				var treePrototypes = SystemAPI.GetBuffer<TreePrototypeElement>(terrainEntity);
+				foreach (var tree in treeInstances)
+				{
+					TreePrototypeElement correspondingInstance = treePrototypes[tree.PrototypeIndex];
+					Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
+					createdDetails.Add(instance);
+					var lt = entityManager.GetComponentData<LocalTransform>(instance);
+					
+					
+					float3 worldPos = tree.Position;
+						
+					// Build final transform
+					quaternion rotation = PackedRotationToQuaternion(tree.PackedRotation);
+					var scale = tree.Scale;
+					//wt.Value = float4x4.TRS(worldPos, rotation, new float3(scale.x, scale.x, scale.y));
+					lt.Position  = worldPos;
+					//lt.Rotation = rotation;
+					//commandBuffer.SetComponent(instance, wt);
+					commandBuffer.SetComponent(instance, lt);
 				}
 
 
@@ -222,5 +237,18 @@ namespace Latios.Terrainy.Systems
 
 			enableRequests = enableRequestsList.AsArray();
 		}
+		
+		private static float DecodeRotation(ushort packedRotation)
+		{
+			return packedRotation * (2f * math.PI / 65535f);
+		}
+
+		private static quaternion PackedRotationToQuaternion(ushort packedRotation)
+		{
+			float radians = DecodeRotation(packedRotation);
+			return quaternion.RotateY(radians);
+		}
 	}
+	
+	
 }

@@ -53,18 +53,17 @@ namespace Latios.Terrainy.Authoring
 						Prefab = entityPrototype,
 					};
 				}
-
+				var terrainPosition = authoring.transform.position;
 				for (var i = 0; i < data.treeInstances.Length; i++)
 				{
 					ref readonly TreeInstance treeInstance = ref data.treeInstances[i];
+					var position = treeInstance.position;
 					treeInstanceComponents[i] = new TreeInstanceElement
 					{
-						position = treeInstance.position,
-						scale = new half2(new half(treeInstance.widthScale),  new half(treeInstance.heightScale)),
-						packedRotation = EncodeRotation(treeInstance.rotation),
-						prototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
-						color = PackColor32(treeInstance.color),
-						lightmapColor = PackColor32(treeInstance.lightmapColor),
+						Position = new float3((position.x * data.size.x) + terrainPosition.x , (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
+						Scale = new half2(new half(treeInstance.widthScale),  new half(treeInstance.heightScale)),
+						PackedRotation = EncodeRotation(treeInstance.rotation),
+						PrototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
 					};
 				}
 				var detailResolution = data.detailResolution;
@@ -90,7 +89,6 @@ namespace Latios.Terrainy.Authoring
 					}
 					else
 					{
-						// TODO this renders at 0,0, which should not happen
 						detailPrefabEntity = CreateAdditionalEntity(TransformUsageFlags.Renderable);
 						AddComponent(detailPrefabEntity, new Prefab());
 						var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
@@ -149,7 +147,7 @@ namespace Latios.Terrainy.Authoring
 							{
 								detailCells.Add(new DetailCellElement
 								{
-									Coord = new float3(transform.posX, transform.posY, transform.posZ),
+									Coord = new float3(transform.posX + terrainPosition.x, transform.posY + terrainPosition.y, transform.posZ + terrainPosition.z),
 									Scale = new float2(transform.scaleXZ, transform.scaleY),
 									RotationY = transform.rotationY,
 									PrototypeIndex = (ushort)math.clamp(i, 0, ushort.MaxValue),
@@ -193,12 +191,6 @@ namespace Latios.Terrainy.Authoring
 			float a = math.fmod(radians, 2f * math.PI);
 			if (a < 0) a += 2f * math.PI;
 			return (ushort)math.round(a * (65535f / (2f * math.PI)));
-		}
-
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private static uint PackColor32(Color32 c)
-		{
-			return (uint)(c.r | (c.g << 8) | (c.b << 16) | (c.a << 24));
 		}
 	}
 
