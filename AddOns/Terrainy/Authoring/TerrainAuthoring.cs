@@ -86,12 +86,13 @@ namespace Latios.Terrainy.Authoring
 					Entity detailPrefabEntity;
 					if (detailPrototype.usePrototypeMesh && detailPrototype.prototype != null)
 					{
-						detailPrefabEntity = GetEntity(detailPrototype.prototype, TransformUsageFlags.Dynamic);
+						detailPrefabEntity = GetEntity(detailPrototype.prototype, TransformUsageFlags.Renderable);
 					}
 					else
 					{
 						// TODO this renders at 0,0, which should not happen
-						detailPrefabEntity = CreateAdditionalEntity(TransformUsageFlags.Dynamic);
+						detailPrefabEntity = CreateAdditionalEntity(TransformUsageFlags.Renderable);
+						AddComponent(detailPrefabEntity, new Prefab());
 						var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
 						var material = new Material(shader)
 						{
@@ -99,17 +100,18 @@ namespace Latios.Terrainy.Authoring
 							mainTexture = detailPrototype.prototypeTexture,
 							name = $"GrasMat_{i}"
 						};
+						
 						#if UNITY_EDITOR
 						// Fixes Unity Editor bug with an open subscene
 						material.SetKeyword(new LocalKeyword(shader, "_SURFACE_TYPE_TRANSPARENT"), true);
 						material.SetKeyword(new LocalKeyword(shader, "_ALPHATEST_ON"), true);
 						#endif
-						// this is deactivated on the billboard? why tho
+						
 						material.SetColor(HealthyColor,  detailPrototype.healthyColor);
 						material.SetColor(DryColor,  detailPrototype.dryColor);
 						material.SetFloat(Billboard, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 1 : 0);
 						material.SetFloat(Lerp, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 0 : 1);
-						// don't worry I don't understand why speed = strength and size is speed, unity naming I guess lol
+						// don't worry I don't understand either why speed = strength and size is speed, unity naming I guess lol
 						material.SetFloat(Speed, authoring.terrainData.wavingGrassStrength);
 						material.SetFloat(Bending, authoring.terrainData.wavingGrassAmount);
 						material.SetFloat(Size, authoring.terrainData.wavingGrassSpeed);

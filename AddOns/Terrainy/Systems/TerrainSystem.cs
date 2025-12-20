@@ -125,17 +125,6 @@ namespace Latios.Terrainy.Systems
 						// Position the instance
 						#if LATIOS_TRANSFORMS_UNITY
 						var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity);
-						LocalTransform lt;
-						if (!entityManager.HasComponent<LocalTransform>(instance))
-						{
-							lt = new LocalTransform();
-							commandBuffer.AddComponent(instance, lt);
-						}
-						else
-						{
-							lt = entityManager.GetComponentData<LocalTransform>(instance);
-						}
-						
 						#else
 						// TODO make it work with qvvs
 						var wt = SystemAPI.GetComponent<WorldTransform>();
@@ -147,14 +136,15 @@ namespace Latios.Terrainy.Systems
 
 						// Transform to world using terrain's LocalToWorld
 						float3 worldPos = math.transform(wt.Value, cords);
-
+						
 						// Build final transform
-						lt.Position = worldPos;
+						quaternion rotation = new quaternion();
 						if(correspondingInstance.RenderMode != UnityEngine.DetailRenderMode.GrassBillboard) {
-							lt.Rotation = quaternion.RotateY(detailCellElement.RotationY);
+							rotation = quaternion.RotateY(detailCellElement.RotationY);
 						}
-						lt.Scale = detailCellElement.Scale.x;
-						commandBuffer.SetComponent(instance, lt);
+						var scale =  detailCellElement.Scale.x;
+						wt.Value = float4x4.TRS(worldPos, rotation, scale);
+						commandBuffer.SetComponent(instance, wt);
 				}
 
 
