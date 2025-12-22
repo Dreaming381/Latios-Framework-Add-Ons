@@ -28,7 +28,8 @@ Thanks to Dreaming I'm Latios for providing this list
 -   [ ] Validate builds have all unnecessary TerrainData stripped.
 
 # Other Todos
--   [ ] Group terrain prefabs in probably blackboards
+-   [ ] Group terrain prefabs in probably blackboards?
 -   [ ] Grass Shader seems very expensive, investigate and doesn't support ortographic camera with billboard support
--   [ ] Support qvvs from latios for details/trees
+-   [x] Support qvvs from latios for details/trees
 -   [ ] Add HDRP to the shader (needs to be open in a HDRP project for that)
+-   [ ] Holes in the terrain are ignored or the debug draw is not correct, either way it doesnt matter if the bits are true or false

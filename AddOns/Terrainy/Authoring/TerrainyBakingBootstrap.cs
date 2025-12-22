@@ -15,6 +15,7 @@ namespace Latios.Terrainy.Authoring
 		public static void InstallTerrainy(ref CustomBakingBootstrapContext context)
 		{
 			context.filteredBakerTypes.Add(typeof(TerrainAuthoring));
+			context.filteredBakerTypes.Add(typeof(TerrainColliderBaker));
 			context.optimizationSystemTypesToInject.Add(TypeManager.GetSystemTypeIndex<RemoveTerrainLiveBakedSystem>());
 		}
 	}

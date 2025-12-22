@@ -14,5 +14,12 @@
   ],
   "author": {
     "name": "Dreaming I'm Latios"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Shader for Terrainy",
+      "description": "Contains shaders for the Terrainy addon",
+      "path": "Samples/Terrainy"
+    }
+  ]
 }
