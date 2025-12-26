@@ -39,13 +39,13 @@ namespace Latios.Terrainy.Authoring
 			NativeArray<DetailsInstanceElement> detailPrototypesArray = new NativeArray<DetailsInstanceElement>(data.detailPrototypes.Length, Allocator.Temp);
 			NativeList<DetailCellElement> detailCells = new NativeList<DetailCellElement>(Allocator.Temp);;
 
-			//if (!IsBakingForEditor())
-			//{
+			if (!IsBakingForEditor())
+			{
 				data = Object.Instantiate(data);
 				// TODO Probably defer this to a system, so that we can have one global list instead of multiple which might share the same entities 
 				for (int i = 0; i < data.treePrototypes.Length; i++)
 				{
-					ref readonly TreePrototype treePrototype = ref data.treePrototypes[i];
+					TreePrototype treePrototype = data.treePrototypes[i];
 					var entityPrototype = GetEntity(treePrototype.prefab, TransformUsageFlags.Dynamic);
 					entitiesPrototypes[i] = new TreePrototypeElement
 					{
@@ -55,12 +55,12 @@ namespace Latios.Terrainy.Authoring
 				var terrainPosition = authoring.transform.position;
 				for (var i = 0; i < data.treeInstances.Length; i++)
 				{
-					ref readonly TreeInstance treeInstance = ref data.treeInstances[i];
+					TreeInstance treeInstance = data.treeInstances[i];
 					var position = treeInstance.position;
 					treeInstanceComponents[i] = new TreeInstanceElement
 					{
 						Position = new float3((position.x * data.size.x) + terrainPosition.x , (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
-						Scale = new half2(new half(treeInstance.widthScale),  new half(treeInstance.heightScale)),
+						Scale = new half2(new half(treeInstance.widthScale), new half(treeInstance.heightScale)),
 						Rotation = treeInstance.rotation,
 						PrototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
 					};
@@ -160,7 +160,7 @@ namespace Latios.Terrainy.Authoring
 				data.detailPrototypes = null;
 				data.treeInstances = Array.Empty<TreeInstance>();
 				data.treePrototypes = null;
-			//}
+			}
 
 			if (detailPrototypesArray.IsCreated)
 			{
