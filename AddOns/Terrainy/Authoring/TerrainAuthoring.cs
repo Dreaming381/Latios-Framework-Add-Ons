@@ -23,7 +23,7 @@ namespace Latios.Terrainy.Authoring
 		private static readonly int Bending = Shader.PropertyToID("_Bending");
 		private static readonly int Size = Shader.PropertyToID("_Size");
 		private static readonly int GrassTint = Shader.PropertyToID("_GrassTint");
-		
+
 		public override void Bake(Terrain authoring)
 		{
 			var entity = GetEntity(TransformUsageFlags.Renderable);
@@ -37,15 +37,16 @@ namespace Latios.Terrainy.Authoring
 			NativeArray<TreeInstanceElement> treeInstanceComponents = new NativeArray<TreeInstanceElement>(data.treeInstances.Length, Allocator.Temp);
 			NativeArray<TreePrototypeElement> entitiesPrototypes = new NativeArray<TreePrototypeElement>(data.treePrototypes.Length, Allocator.Temp);
 			NativeArray<DetailsInstanceElement> detailPrototypesArray = new NativeArray<DetailsInstanceElement>(data.detailPrototypes.Length, Allocator.Temp);
-			NativeList<DetailCellElement> detailCells = new NativeList<DetailCellElement>(Allocator.Temp);;
+			NativeList<DetailCellElement> detailCells = new NativeList<DetailCellElement>(Allocator.Temp);
 
 			if (!IsBakingForEditor())
 			{
 				data = Object.Instantiate(data);
 				// TODO Probably defer this to a system, so that we can have one global list instead of multiple which might share the same entities 
-				for (int i = 0; i < data.treePrototypes.Length; i++)
+				var treePrototypes = data.treePrototypes;
+				for (int i = 0; i < treePrototypes.Length; i++)
 				{
-					TreePrototype treePrototype = data.treePrototypes[i];
+					TreePrototype treePrototype = treePrototypes[i];
 					var entityPrototype = GetEntity(treePrototype.prefab, TransformUsageFlags.Dynamic);
 					entitiesPrototypes[i] = new TreePrototypeElement
 					{
@@ -53,13 +54,14 @@ namespace Latios.Terrainy.Authoring
 					};
 				}
 				var terrainPosition = authoring.transform.position;
-				for (var i = 0; i < data.treeInstances.Length; i++)
+				var treeInstances = data.treeInstances;
+				for (var i = 0; i < treeInstances.Length; i++)
 				{
-					TreeInstance treeInstance = data.treeInstances[i];
+					TreeInstance treeInstance = treeInstances[i];
 					var position = treeInstance.position;
 					treeInstanceComponents[i] = new TreeInstanceElement
 					{
-						Position = new float3((position.x * data.size.x) + terrainPosition.x , (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
+						Position = new float3((position.x * data.size.x) + terrainPosition.x, (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
 						Scale = new half2(new half(treeInstance.widthScale), new half(treeInstance.heightScale)),
 						Rotation = treeInstance.rotation,
 						PrototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
@@ -67,20 +69,37 @@ namespace Latios.Terrainy.Authoring
 				}
 				var detailResolution = data.detailResolution;
 				var detailPrototypeCount = data.detailPrototypes.Length;
+				var detailResolutionPerPatch = data.detailResolutionPerPatch;
 				var quadMesh = new Mesh();
-				quadMesh.SetVertices(new List<Vector3> {
-					new Vector3(-0.5f, 0f, 0f), new Vector3(0.5f, 0f, 0f), new Vector3(-0.5f, 1f, 0f), new Vector3(0.5f, 1f, 0f)
+				quadMesh.SetVertices(new List<Vector3>
+				{
+					new Vector3(-0.5f, 0f, 0f),
+					new Vector3(0.5f, 0f, 0f),
+					new Vector3(-0.5f, 1f, 0f),
+					new Vector3(0.5f, 1f, 0f)
 				});
-				quadMesh.SetUVs(0, new List<Vector2> {
-					new Vector2(0,0), new Vector2(1,0), new Vector2(0,1), new Vector2(1,1)
+				quadMesh.SetUVs(0, new List<Vector2>
+				{
+					new Vector2(0, 0),
+					new Vector2(1, 0),
+					new Vector2(0, 1),
+					new Vector2(1, 1)
 				});
-				quadMesh.SetIndices(new[]{0,2,1, 1,2,3}, MeshTopology.Triangles, 0, true);
+				quadMesh.SetIndices(new[]
+				{
+					0,
+					2,
+					1,
+					1,
+					2,
+					3
+				}, MeshTopology.Triangles, 0, true);
 				quadMesh.RecalculateBounds();
+				var detailPrototypes = data.detailPrototypes;
+				var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
 				for (var i = 0; i < detailPrototypeCount; i++)
 				{
-					ref readonly DetailPrototype detailPrototype = ref data.detailPrototypes[i];
-
-					// Map prototype prefab to entity if using mesh-based detail; Entity.Null otherwise
+					DetailPrototype detailPrototype = detailPrototypes[i];
 					Entity detailPrefabEntity;
 					if (detailPrototype.usePrototypeMesh && detailPrototype.prototype != null)
 					{
@@ -90,22 +109,21 @@ namespace Latios.Terrainy.Authoring
 					{
 						detailPrefabEntity = CreateAdditionalEntity(TransformUsageFlags.Renderable);
 						AddComponent(detailPrefabEntity, new Prefab());
-						var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
 						var material = new Material(shader)
 						{
 							enableInstancing = true,
 							mainTexture = detailPrototype.prototypeTexture,
 							name = $"GrasMat_{i}"
 						};
-						
-						#if UNITY_EDITOR
+
+#if UNITY_EDITOR
 						// Fixes Unity Editor bug with an open subscene
 						material.SetKeyword(new LocalKeyword(shader, "_SURFACE_TYPE_TRANSPARENT"), true);
 						material.SetKeyword(new LocalKeyword(shader, "_ALPHATEST_ON"), true);
-						#endif
-						
-						material.SetColor(HealthyColor,  detailPrototype.healthyColor);
-						material.SetColor(DryColor,  detailPrototype.dryColor);
+#endif
+
+						material.SetColor(HealthyColor, detailPrototype.healthyColor);
+						material.SetColor(DryColor, detailPrototype.dryColor);
 						material.SetFloat(Billboard, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 1 : 0);
 						material.SetFloat(Lerp, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 0 : 1);
 						// don't worry I don't understand either why speed = strength and size is speed, unity naming I guess lol
@@ -137,11 +155,12 @@ namespace Latios.Terrainy.Authoring
 						RenderMode = detailPrototype.renderMode,
 					};
 					// Get details per patch, since the method is c++ internal and im not sure how they compute, get it over the method
-					for (int y = 0; y < detailResolution; y += data.detailResolutionPerPatch)
+
+					for (var y = 0; y < detailResolution; y += detailResolutionPerPatch)
 					{
-						for (int x = 0; x < detailResolution; x += data.detailResolutionPerPatch)
+						for (int x = 0; x < detailResolution; x += detailResolutionPerPatch)
 						{
-							var transforms = data.ComputeDetailInstanceTransforms(x / data.detailResolutionPerPatch, y / data.detailResolutionPerPatch, i, detailPrototype.density, out Bounds bounds);
+							var transforms = data.ComputeDetailInstanceTransforms(x / detailResolutionPerPatch, y / detailResolutionPerPatch, i, detailPrototype.density, out Bounds bounds);
 							foreach (var transform in transforms)
 							{
 								detailCells.Add(new DetailCellElement
@@ -154,6 +173,7 @@ namespace Latios.Terrainy.Authoring
 							}
 						}
 					}
+
 				}
 
 				// Todo: This probably needs more testing and iteration.
