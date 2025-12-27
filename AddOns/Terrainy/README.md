@@ -13,7 +13,9 @@ This addon provides baking support for a terrain. It bakes the tree prefabs and 
 
 ## Getting Started
 
-**Scripting Define:** *LATIOS_ADDON_TERRAINY*
+**Scripting Define:** 
+*LATIOS_ADDON_TERRAINY*
+*LATIOS_ADDON_TERRAINY_DEBUG* For debugging purposes
 
 **Requirements:**
 

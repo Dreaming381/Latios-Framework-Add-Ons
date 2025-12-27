@@ -1,4 +1,6 @@
-﻿using Latios.Psyshock;
+﻿#if LATIOS_ADDON_TERRAINY_DEBUG
+using Latios.Psyshock;
+using Unity.Burst;
 #if !LATIOS_TRANSFORMS_UNITY
 using Latios.Transforms;
 using Ray = Latios.Psyshock.Ray;
@@ -15,30 +17,50 @@ using Collider = Latios.Psyshock.Collider;
 namespace Latios.Terrainy.Systems
 {
 	[DisableAutoCreation]
-	[UpdateInGroup(typeof(PresentationSystemGroup))]
 	[WorldSystemFilter(WorldSystemFilterFlags.Editor)]
-	public partial struct TerrainColliderDebugSystem : ISystem
+	[UpdateInGroup(typeof(SimulationSystemGroup))]
+	[RequireMatchingQueriesForUpdate]
+	public partial class TerrainColliderDebugSystem : SystemBase
 	{
-		public void OnCreate(ref SystemState state) { }
-
-		public void OnUpdate(ref SystemState state)
+		private Camera _camera;
+		private Mouse _current;
+		
+		[BurstCompile]
+		public partial struct RayJob : IJobEntity
 		{
+			public Ray Ray;
 
-#if !LATIOS_TRANSFORMS_UNITY
-			var camera = Camera.main;
-			var unityRay = camera.ScreenPointToRay(Mouse.current.position.ReadValue());
-			Debug.DrawRay(unityRay.origin, unityRay.direction * 100f, Color.blue);
-			Ray ray = new Ray(unityRay.origin, unityRay.direction, 100f);
-			foreach (var (collider, transform, entity) in SystemAPI.Query<RefRO<Collider>, RefRO<WorldTransform>>().WithEntityAccess())
+			private void Execute(in Collider collider, in WorldTransform transform)
 			{
-				if (collider.ValueRO.type != ColliderType.Terrain) continue;
-				var rigid = new RigidTransform(transform.ValueRO.worldTransform.ToMatrix4x4());
-				PhysicsDebug.DrawCollider(in collider.ValueRO, rigid, Color.red);
-				if (Physics.Raycast(ray, in collider.ValueRO, in transform.ValueRO.worldTransform, out var hit))
+				if (collider.type != ColliderType.Terrain) return;
+				//var rigid = new RigidTransform(transform.ValueRO.worldTransform.ToMatrix4x4());
+				//PhysicsDebug.DrawCollider(in collider.ValueRO, rigid, Color.red);
+				if (Physics.Raycast(in Ray, in collider, in transform.worldTransform, out var hit))
 				{
 					Debug.Log("Hit Ray");
 				}
 			}
+		}
+
+		protected override void OnStartRunning()
+		{
+			base.OnStartRunning();
+			_camera = Camera.main;
+			_current = Mouse.current;
+		}
+		
+		protected override void OnUpdate()
+		{
+#if !LATIOS_TRANSFORMS_UNITY
+			if (!_current.leftButton.wasPressedThisFrame) return;
+			var unityRay = _camera.ScreenPointToRay(_current.position.ReadValue());
+			Ray ray = new Ray(unityRay.origin, unityRay.direction, 100f);
+			Debug.DrawLine(ray.start, ray.end, Color.blue, 1f);
+			var job = new RayJob()
+			{
+				Ray = ray
+			};
+			job.ScheduleParallel();
 #else
 			foreach (var (collider, localToWorld) in SystemAPI.Query<Collider, LocalToWorld>())
 			{
@@ -48,8 +70,6 @@ namespace Latios.Terrainy.Systems
 			}
 #endif
 		}
-
-		public void OnDestroy(ref SystemState state) { }
-
 	}
 }
+#endif

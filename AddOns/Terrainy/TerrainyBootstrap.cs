@@ -12,7 +12,9 @@ namespace Latios.Terrainy
         public static void InstallTerrainy(World world)
         {
             BootstrapTools.InjectSystem(TypeManager.GetSystemTypeIndex<TerrainSystem>(), world);
+#if LATIOS_ADDON_TERRAINY_DEBUG
             BootstrapTools.InjectSystem(TypeManager.GetSystemTypeIndex<TerrainColliderDebugSystem>(), world);
+#endif
         }
     }
 }

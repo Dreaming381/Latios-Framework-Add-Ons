@@ -23,12 +23,14 @@ namespace Latios.Terrainy.Authoring
 		{
 			Entity entity = baker.GetEntity(TransformUsageFlags.Renderable);
 			baker.AddComponent<Collider>(entity);
-			int heightmapResolution = authoring.terrainData.heightmapResolution;
-			int holesResolution = authoring.terrainData.holesResolution;
+			TerrainData terrainData = authoring.terrainData;
+			int heightmapResolution = terrainData.heightmapResolution;
+			int holesResolution = terrainData.holesResolution;
 			int quadsPerRow = heightmapResolution - 1;
+			Vector3 size = terrainData.size;
 
-			float[,] heights = authoring.terrainData.GetHeights(0, 0, heightmapResolution, heightmapResolution);
-			bool[,] holes = authoring.terrainData.GetHoles(0, 0, holesResolution, holesResolution);
+			float[,] heights = terrainData.GetHeights(0, 0, heightmapResolution, heightmapResolution);
+			bool[,] holes = terrainData.GetHoles(0, 0, holesResolution, holesResolution);
 
 			var heightsRowMajor = new NativeArray<short>(heightmapResolution * heightmapResolution, Allocator.Temp);
 			for (var y = 0; y < heightmapResolution; y++)
@@ -36,7 +38,7 @@ namespace Latios.Terrainy.Authoring
 				for (var x = 0; x < heightmapResolution; x++)
 				{
 					float h = heights[y, x];
-					var converted = (short)(math.clamp(h, 0f, 1f) * authoring.terrainData.size.y);
+					var converted = (short)(math.clamp(h, 0f, 1f) * size.y);
 					heightsRowMajor[x + y * heightmapResolution] = converted;
 				}
 			}
@@ -68,29 +70,29 @@ namespace Latios.Terrainy.Authoring
 				}
 			}
 
-			var fixedName = new FixedString128Bytes(authoring.terrainData.name);
+			var fixedName = new FixedString128Bytes(terrainData.name);
 
 			_blobberHandle = baker.RequestCreateTerrainBlobAsset(quadsPerRow, heightsRowMajor, quadTriangleSplitParities, trianglesValid, fixedName);
-			this._scale = ComputeTerrainScale(authoring.terrainData, quadsPerRow, heights.Length, heightsInMeters: true, heightsNormalized01: false);
+			this._scale = ComputeTerrainScale(size, quadsPerRow, heights.Length, heightsInMeters: true, heightsNormalized01: false);
 			return _blobberHandle.IsValid;
 		}
 
 		// TODO i think its everytime in meters, but needs testing probably
-		private static float ComputeSy(TerrainData terrainData, bool heightsInMeters, bool heightsNormalized01)
+		private static float ComputeSy(Vector3 terrainDataSize, bool heightsInMeters, bool heightsNormalized01)
 		{
 			if (heightsInMeters) return 1f;
-			if (heightsNormalized01) return terrainData.size.y;
-			return terrainData.size.y / 32767f;
+			if (heightsNormalized01) return terrainDataSize.y;
+			return terrainDataSize.y / 32767f;
 		}
 
-		private static float3 ComputeTerrainScale(TerrainData terrainData, int quadsPerRow, int heightsLength, bool heightsInMeters, bool heightsNormalized01)
+		private static float3 ComputeTerrainScale(Vector3 terrainDataSize, int quadsPerRow, int heightsLength, bool heightsInMeters, bool heightsNormalized01)
 		{
 			int rowCount = heightsLength / (quadsPerRow + 1);
 			int quadsPerCol = math.max(1, rowCount - 1);
 
-			float sx = terrainData.size.x / quadsPerRow;
-			float sz = terrainData.size.z / quadsPerCol;
-			float sy = ComputeSy(terrainData, heightsInMeters, heightsNormalized01);
+			float sx = terrainDataSize.x / quadsPerRow;
+			float sz = terrainDataSize.z / quadsPerCol;
+			float sy = ComputeSy(terrainDataSize, heightsInMeters, heightsNormalized01);
 
 			return new float3(sx, sy, sz);
 		}
@@ -107,8 +109,8 @@ namespace Latios.Terrainy.Authoring
 			{
 				for (var x = 0; x < quadsPerRow; x++)
 				{
-					int topLeft = (y) * vertsPerRow + x;
-					int topRight = (y) * vertsPerRow + (x + 1);
+					int topLeft = y * vertsPerRow + x;
+					int topRight = y * vertsPerRow + (x + 1);
 					int bottomLeft = (y + 1) * vertsPerRow + x;
 					int bottomRight = (y + 1) * vertsPerRow + (x + 1);
 
