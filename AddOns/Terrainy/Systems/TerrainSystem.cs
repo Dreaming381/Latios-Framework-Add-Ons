@@ -1,4 +1,5 @@
 ﻿using Latios.Systems;
+using Latios.Terrainy.Commands;
 using Latios.Terrainy.Components;
 using Latios.Transforms.Abstract;
 using Unity.Burst;
@@ -11,7 +12,7 @@ using UnityEngine;
 #if LATIOS_TRANSFORMS_UNITY
 using LocalTransform = Unity.Transforms.LocalTransform;
 using Unity.Transforms;
-#else 
+#else
 using Latios.Transforms;
 #endif
 
@@ -116,112 +117,128 @@ namespace Latios.Terrainy.Systems
 		void CreateVegetationAndDetailEntities(ref SystemState state, NativeArray<Entity> terrainEntities)
 		{
 			var entityManager = state.EntityManager;
-			var commandBuffer = new EntityCommandBuffer(state.WorldUpdateAllocator);
-
+#if LATIOS_TRANSFORMS_UNITY
+			var commandBuffer = new InstantiateCommandBufferCommand1<LocalToWorld, TerrainInstantiationCommand>(state.WorldUpdateAllocator);
+			var commandBufferLocal = new InstantiateCommandBufferCommand1<LocalTransform, TerrainInstantiationCommand>(state.WorldUpdateAllocator);
+#else
+			var commandBuffer = new InstantiateCommandBufferCommand1<WorldTransform, TerrainInstantiationCommand>(state.WorldUpdateAllocator);
+#endif
 			foreach (var terrainEntity in terrainEntities)
 			{
 				var detailCellElements = SystemAPI.GetBuffer<DetailCellElement>(terrainEntity);
 				var detailInstanceElements = SystemAPI.GetBuffer<DetailsInstanceElement>(terrainEntity);
 				var treeInstances = SystemAPI.GetBuffer<TreeInstanceElement>(terrainEntity);
-				var createdDetails = new NativeList<Entity>(detailCellElements.Length + treeInstances.Length, Allocator.Temp);
 #if LATIOS_TRANSFORMS_UNITY
-				var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity);
+				var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity); 
+				CreateDetailAndTreeInstances(ref state, ref detailCellElements, ref detailInstanceElements, ref entityManager, wt, ref commandBuffer, ref commandBufferLocal, terrainEntity, ref treeInstances);
+				commandBuffer.Playback(entityManager);
+				commandBufferLocal.Playback(entityManager);
 #else
 				var wt = SystemAPI.GetComponent<WorldTransform>(terrainEntity);
+				CreateDetailAndTreeInstances(ref state, ref detailCellElements, ref detailInstanceElements, ref entityManager, wt, ref commandBuffer, terrainEntity, ref treeInstances);
+				commandBuffer.Playback(entityManager);
 #endif
 
-				CreateDetailAndTreeInstances(ref state, ref detailCellElements, ref detailInstanceElements, ref entityManager, createdDetails, wt, ref commandBuffer, terrainEntity, ref treeInstances);
-
-
-				var decorationsGroupEntity = state.EntityManager.CreateEntity();
-				var leg = state.EntityManager.AddBuffer<LinkedEntityGroup>(decorationsGroupEntity).Reinterpret<Entity>();
-				leg.AddRange(createdDetails.AsArray());
-
-				var terrainComp = state.EntityManager.GetComponentData<TerrainComponent>(terrainEntity);
-				terrainComp.DecorationsGroupEntity = decorationsGroupEntity;
-				commandBuffer.Playback(entityManager);
-				state.EntityManager.SetComponentData(terrainEntity, terrainComp);
 			}
 		}
-		
+
 		#if LATIOS_TRANSFORMS_UNITY
-		void CreateDetailAndTreeInstances(ref SystemState state, ref DynamicBuffer<DetailCellElement> detailCellElements, ref DynamicBuffer<DetailsInstanceElement> detailInstanceElements, ref EntityManager entityManager, NativeList<Entity> createdDetails, LocalToWorld wt, ref EntityCommandBuffer commandBuffer, Entity terrainEntity, ref DynamicBuffer<TreeInstanceElement> treeInstances)
+		void CreateDetailAndTreeInstances(ref SystemState state, ref DynamicBuffer<DetailCellElement> detailCellElements, ref DynamicBuffer<DetailsInstanceElement> detailInstanceElements, ref EntityManager entityManager, LocalToWorld wt, ref InstantiateCommandBufferCommand1<LocalToWorld, TerrainInstantiationCommand> commandBuffer, ref InstantiateCommandBufferCommand1<LocalTransform, TerrainInstantiationCommand> commandBufferLocal, Entity terrainEntity, ref DynamicBuffer<TreeInstanceElement> treeInstances)
 		{
-			foreach (DetailCellElement detailCellElement in detailCellElements)
+			var terrainInstantiationCommand = new TerrainInstantiationCommand
 			{
-				DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
-				Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
-				createdDetails.Add(instance);
-
-				float3 worldPos = detailCellElement.Coord;
-
-				var rotation = new quaternion();
-				if (correspondingInstance.RenderMode != DetailRenderMode.GrassBillboard)
+				terrainEntity = terrainEntity
+			};
+			if(!detailInstanceElements.IsEmpty) {
+				foreach (DetailCellElement detailCellElement in detailCellElements)
 				{
-					rotation = quaternion.RotateY(detailCellElement.RotationY);
+					DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
+
+					float3 worldPos = detailCellElement.Coord;
+
+					var rotation = new quaternion();
+					if (correspondingInstance.RenderMode != DetailRenderMode.GrassBillboard)
+					{
+						rotation = quaternion.RotateY(detailCellElement.RotationY);
+					}
+					var scale = detailCellElement.Scale.x;
+					wt.Value = float4x4.TRS(worldPos, rotation, scale);
+					commandBuffer.Add(correspondingInstance.Prefab, wt, terrainInstantiationCommand);
 				}
-				var scale = detailCellElement.Scale.x;
-				wt.Value = float4x4.TRS(worldPos, rotation, scale);
-				commandBuffer.SetComponent(instance, wt);
 			}
-
 			var treePrototypes = SystemAPI.GetBuffer<TreePrototypeElement>(terrainEntity);
-			foreach (TreeInstanceElement tree in treeInstances)
-			{
-				TreePrototypeElement correspondingInstance = treePrototypes[tree.PrototypeIndex];
-				Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
-				createdDetails.Add(instance);
-				var lt = entityManager.GetComponentData<LocalTransform>(instance);
+			if(!treePrototypes.IsEmpty) {
+				foreach (TreeInstanceElement tree in treeInstances)
+				{
+					TreePrototypeElement correspondingInstance = treePrototypes[tree.PrototypeIndex];
 					
-				float3 worldPos = tree.Position;
+					var lt = entityManager.GetComponentData<LocalTransform>(correspondingInstance.Prefab);
+						
+					float3 worldPos = tree.Position;
 
-				quaternion rotation = quaternion.RotateY(tree.Rotation);
-				var scale = tree.Scale;
-				lt.Position = worldPos;
-				lt.Scale *= scale.x;
-				lt.Rotation = math.mul(rotation, lt.Rotation);
-				commandBuffer.SetComponent(instance, lt);
+					quaternion rotation = quaternion.RotateY(tree.Rotation);
+					var scale = tree.Scale;
+					lt.Position = worldPos;
+					lt.Scale *= scale.x;
+					lt.Rotation = math.mul(rotation, lt.Rotation);
+					commandBufferLocal.Add(correspondingInstance.Prefab, lt, terrainInstantiationCommand);
+				}
 			}
 		}
 #else
-		void CreateDetailAndTreeInstances(ref SystemState state, ref DynamicBuffer<DetailCellElement> detailCellElements, ref DynamicBuffer<DetailsInstanceElement> detailInstanceElements, ref EntityManager entityManager, NativeList<Entity> createdDetails, WorldTransform wt, ref EntityCommandBuffer commandBuffer, Entity terrainEntity, ref DynamicBuffer<TreeInstanceElement> treeInstances)
+		void CreateDetailAndTreeInstances(ref SystemState state, ref DynamicBuffer<DetailCellElement> detailCellElements, ref DynamicBuffer<DetailsInstanceElement> detailInstanceElements, ref EntityManager entityManager, WorldTransform wt, ref InstantiateCommandBufferCommand1<WorldTransform, TerrainInstantiationCommand> commandBuffer, Entity terrainEntity, ref DynamicBuffer<TreeInstanceElement> treeInstances)
 		{
-			foreach (DetailCellElement detailCellElement in detailCellElements)
+			var terrainInstantiationCommand = new TerrainInstantiationCommand
 			{
-				DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
-				Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
-				createdDetails.Add(instance);
-
-				float3 worldPos = detailCellElement.Coord;
-				
-				var rotation = new quaternion();
-				if (correspondingInstance.RenderMode != DetailRenderMode.GrassBillboard)
+				terrainEntity = terrainEntity
+			};
+			if (!detailInstanceElements.IsEmpty)
+			{
+				foreach (DetailCellElement detailCellElement in detailCellElements)
 				{
-					rotation = quaternion.RotateY(detailCellElement.RotationY);
+					DetailsInstanceElement correspondingInstance = detailInstanceElements[detailCellElement.PrototypeIndex];
+
+					float3 worldPos = detailCellElement.Coord;
+
+					var rotation = new quaternion();
+					if (correspondingInstance.RenderMode != DetailRenderMode.GrassBillboard)
+					{
+						rotation = quaternion.RotateY(detailCellElement.RotationY);
+					}
+					var scale = detailCellElement.Scale.x;
+					wt.worldTransform = new TransformQvvs(worldPos, rotation, scale, 1f);
+					commandBuffer.Add(correspondingInstance.Prefab, wt, terrainInstantiationCommand);
 				}
-				var scale = detailCellElement.Scale.x;
-				wt.worldTransform = new TransformQvvs(worldPos, rotation, scale, 1f);
-				commandBuffer.SetComponent(instance, wt);
 			}
-
 			var treePrototypes = SystemAPI.GetBuffer<TreePrototypeElement>(terrainEntity);
-			foreach (TreeInstanceElement tree in treeInstances)
+			if (!treePrototypes.IsEmpty)
 			{
-				TreePrototypeElement correspondingInstance = treePrototypes[tree.PrototypeIndex];
-				Entity instance = entityManager.Instantiate(correspondingInstance.Prefab);
-				createdDetails.Add(instance);
-				var wtLocal = entityManager.GetComponentData<WorldTransform>(instance);
-					
-				float3 worldPos = tree.Position;
+				var treeToWorld = new NativeHashMap<Entity, WorldTransform>(treePrototypes.Length, Allocator.Temp);
+				foreach (TreeInstanceElement tree in treeInstances)
+				{
+					TreePrototypeElement correspondingInstance = treePrototypes[tree.PrototypeIndex];
+					WorldTransform wtLocal;
+					if (treeToWorld.ContainsKey(correspondingInstance.Prefab))
+					{
+						wtLocal = treeToWorld[correspondingInstance.Prefab];
+					}
+					else
+					{
+						wtLocal = entityManager.GetComponentData<WorldTransform>(correspondingInstance.Prefab);
+						treeToWorld.Add(correspondingInstance.Prefab, wtLocal);
+					}
 
-				var wtLocalQvvs = wtLocal.worldTransform;
-				quaternion rotation = quaternion.RotateY(tree.Rotation);
-				var scale = tree.Scale;
-				wtLocalQvvs.position = worldPos;
-				wtLocalQvvs.scale *= scale.x;
-				wtLocalQvvs.rotation = math.mul(rotation, wtLocalQvvs.rotation);
-				wtLocal.worldTransform = wtLocalQvvs;
-				commandBuffer.SetComponent(instance, wtLocal);
+					float3 worldPos = tree.Position;
+
+					var wtLocalQvvs = wtLocal.worldTransform;
+					quaternion rotation = quaternion.RotateY(tree.Rotation);
+					var scale = tree.Scale;
+					wtLocalQvvs.position = worldPos;
+					wtLocalQvvs.scale *= scale.x;
+					wtLocalQvvs.rotation = math.mul(rotation, wtLocalQvvs.rotation);
+					wtLocal.worldTransform = wtLocalQvvs;
+					commandBuffer.Add(correspondingInstance.Prefab, wtLocal, terrainInstantiationCommand);
+				}
 			}
 		}
 #endif
