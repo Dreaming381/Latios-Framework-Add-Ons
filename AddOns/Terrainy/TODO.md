@@ -21,15 +21,15 @@ Thanks to Dreaming I'm Latios for providing this list
     maybe gather and respawn all entities during live baking.
 -   [ ] Figure out some mechanism so that we have terrain tree/detail shaders at
     authoring and DOTS shaders at runtime.
--   [ ] Bake and iterate on terrain colliders in parallel somewhere between
+-   [x] Bake and iterate on terrain colliders in parallel somewhere between
     steps 5 and 8, without worrying about details and trees, since those will be
     their own entities at runtime. Might need to rebuild colliders at runtime
     for live-baked entities.
--   [ ] Validate builds have all unnecessary TerrainData stripped.
+-   [x] Validate builds have all unnecessary TerrainData stripped.
 
 # Other Todos
 -   [ ] Group terrain prefabs in probably blackboards?
 -   [ ] Grass Shader seems very expensive, investigate and doesn't support ortographic camera with billboard support
 -   [x] Support qvvs from latios for details/trees
 -   [ ] Add HDRP to the shader (needs to be open in a HDRP project for that)
--   [ ] Holes in the terrain are ignored or the debug draw is not correct, either way it doesnt matter if the bits are true or false
+-   [ ] Holes in the terrain debug draw is not supported at the moment

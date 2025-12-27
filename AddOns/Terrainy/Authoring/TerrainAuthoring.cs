@@ -15,6 +15,9 @@ namespace Latios.Terrainy.Authoring
 	[DisableAutoCreation]
 	public class TerrainAuthoring : Baker<Terrain>
 	{
+
+#region Shader Properties
+
 		private static readonly int HealthyColor = Shader.PropertyToID("_HealthyColor");
 		private static readonly int DryColor = Shader.PropertyToID("_DryColor");
 		private static readonly int Billboard = Shader.PropertyToID("_Billboard");
@@ -24,9 +27,12 @@ namespace Latios.Terrainy.Authoring
 		private static readonly int Size = Shader.PropertyToID("_Size");
 		private static readonly int GrassTint = Shader.PropertyToID("_GrassTint");
 
+#endregion
+
+
 		public override void Bake(Terrain authoring)
 		{
-			var entity = GetEntity(TransformUsageFlags.Renderable);
+			Entity entity = GetEntity(TransformUsageFlags.Renderable);
 
 			TerrainData data = authoring.terrainData;
 			DependsOn(data);
@@ -42,23 +48,24 @@ namespace Latios.Terrainy.Authoring
 			if (!IsBakingForEditor())
 			{
 				data = Object.Instantiate(data);
-				// TODO Probably defer this to a system, so that we can have one global list instead of multiple which might share the same entities 
-				var treePrototypes = data.treePrototypes;
-				for (int i = 0; i < treePrototypes.Length; i++)
+
+#region Bake Trees
+				TreePrototype[] treePrototypes = data.treePrototypes;
+				for (var i = 0; i < treePrototypes.Length; i++)
 				{
 					TreePrototype treePrototype = treePrototypes[i];
-					var entityPrototype = GetEntity(treePrototype.prefab, TransformUsageFlags.Dynamic);
+					Entity entityPrototype = GetEntity(treePrototype.prefab, TransformUsageFlags.Dynamic);
 					entitiesPrototypes[i] = new TreePrototypeElement
 					{
 						Prefab = entityPrototype,
 					};
 				}
-				var terrainPosition = authoring.transform.position;
-				var treeInstances = data.treeInstances;
+				Vector3 terrainPosition = authoring.transform.position;
+				TreeInstance[] treeInstances = data.treeInstances;
 				for (var i = 0; i < treeInstances.Length; i++)
 				{
 					TreeInstance treeInstance = treeInstances[i];
-					var position = treeInstance.position;
+					Vector3 position = treeInstance.position;
 					treeInstanceComponents[i] = new TreeInstanceElement
 					{
 						Position = new float3((position.x * data.size.x) + terrainPosition.x, (position.y * data.size.y) + terrainPosition.y, (position.z * data.size.z) + terrainPosition.z),
@@ -67,9 +74,14 @@ namespace Latios.Terrainy.Authoring
 						PrototypeIndex = (ushort)math.clamp(treeInstance.prototypeIndex, ushort.MinValue, ushort.MaxValue),
 					};
 				}
-				var detailResolution = data.detailResolution;
-				var detailPrototypeCount = data.detailPrototypes.Length;
-				var detailResolutionPerPatch = data.detailResolutionPerPatch;
+
+#endregion
+
+#region Bake Details
+
+				int detailResolution = data.detailResolution;
+				int detailPrototypeCount = data.detailPrototypes.Length;
+				int detailResolutionPerPatch = data.detailResolutionPerPatch;
 				var quadMesh = new Mesh();
 				quadMesh.SetVertices(new List<Vector3>
 				{
@@ -95,8 +107,12 @@ namespace Latios.Terrainy.Authoring
 					3
 				}, MeshTopology.Triangles, 0, true);
 				quadMesh.RecalculateBounds();
-				var detailPrototypes = data.detailPrototypes;
-				var shader = Shader.Find("Shader Graphs/GrasLatiosShader");
+				DetailPrototype[] detailPrototypes = data.detailPrototypes;
+				Shader shader = Shader.Find("Shader Graphs/GrasLatiosShader");
+				if (shader == null)
+				{
+					Debug.LogWarning("Shader Graphs/GrasLatiosShader not found, you need to install the Samples or provide your own");
+				}
 				for (var i = 0; i < detailPrototypeCount; i++)
 				{
 					DetailPrototype detailPrototype = detailPrototypes[i];
@@ -126,7 +142,7 @@ namespace Latios.Terrainy.Authoring
 						material.SetColor(DryColor, detailPrototype.dryColor);
 						material.SetFloat(Billboard, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 1 : 0);
 						material.SetFloat(Lerp, detailPrototype.renderMode == DetailRenderMode.GrassBillboard ? 0 : 1);
-						// don't worry I don't understand either why speed = strength and size is speed, unity naming I guess lol
+
 						material.SetFloat(Speed, authoring.terrainData.wavingGrassStrength);
 						material.SetFloat(Bending, authoring.terrainData.wavingGrassAmount);
 						material.SetFloat(Size, authoring.terrainData.wavingGrassSpeed);
@@ -173,10 +189,11 @@ namespace Latios.Terrainy.Authoring
 							}
 						}
 					}
-
 				}
 
-				// Todo: This probably needs more testing and iteration.
+#endregion
+
+				// Todo: This probably needs more testing and iteration. TrustNoOneElse: Didn't find any problems here
 				data.detailPrototypes = null;
 				data.treeInstances = Array.Empty<TreeInstance>();
 				data.treePrototypes = null;
@@ -184,18 +201,18 @@ namespace Latios.Terrainy.Authoring
 
 			if (detailPrototypesArray.IsCreated)
 			{
-				var detailProtoBuffer = AddBuffer<DetailsInstanceElement>(entity);
+				DynamicBuffer<DetailsInstanceElement> detailProtoBuffer = AddBuffer<DetailsInstanceElement>(entity);
 				detailProtoBuffer.AddRange(detailPrototypesArray);
 			}
 			if (detailCells.IsCreated)
 			{
-				var detailCellBuffer = AddBuffer<DetailCellElement>(entity);
+				DynamicBuffer<DetailCellElement> detailCellBuffer = AddBuffer<DetailCellElement>(entity);
 				detailCellBuffer.AddRange(detailCells.AsArray());
 			}
 
-			var treeInstanceBuffer = AddBuffer<TreeInstanceElement>(entity);
+			DynamicBuffer<TreeInstanceElement> treeInstanceBuffer = AddBuffer<TreeInstanceElement>(entity);
 			treeInstanceBuffer.AddRange(treeInstanceComponents);
-			var treePrototypeBuffer = AddBuffer<TreePrototypeElement>(entity);
+			DynamicBuffer<TreePrototypeElement> treePrototypeBuffer = AddBuffer<TreePrototypeElement>(entity);
 			treePrototypeBuffer.AddRange(entitiesPrototypes);
 			AddComponent(entity, new TerrainDataComponent
 			{
