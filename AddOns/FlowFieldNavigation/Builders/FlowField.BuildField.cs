@@ -2,10 +2,14 @@
 using System.Diagnostics;
 using Latios.Psyshock;
 using Latios.Transforms;
+using Latios.Unsafe;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
+using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Mathematics;
+using UnityEngine;
 using Physics = Latios.Psyshock.Physics;
 
 namespace Latios.FlowFieldNavigation
@@ -18,7 +22,6 @@ namespace Latios.FlowFieldNavigation
         internal FieldSettings FieldSettings;
         internal TransformQvvs Transform;
         internal CollisionLayer ObstaclesLayer;
-        internal CollisionLayerSettings ObstaclesLayerSettings;
         internal BuildAgentsConfig AgentsConfig;
 
         internal bool HasObstaclesLayer;
@@ -80,13 +83,11 @@ namespace Latios.FlowFieldNavigation
         /// </summary>
         /// <param name="config">Configuration to modify</param>
         /// <param name="obstaclesLayer">Collision layer containing obstacles</param>
-        /// <param name="obstaclesLayerSettings">Settings from obstaclesLayer</param>
         /// <returns>Modified configuration</returns>
-        public static BuildFieldConfig WithObstacles(this BuildFieldConfig config, in CollisionLayer obstaclesLayer, CollisionLayerSettings obstaclesLayerSettings)
+        public static BuildFieldConfig WithObstacles(this BuildFieldConfig config, in CollisionLayer obstaclesLayer)
         {
             config.HasObstaclesLayer = true;
             config.ObstaclesLayer = obstaclesLayer;
-            config.ObstaclesLayerSettings = obstaclesLayerSettings;
             return config;
         }
 
@@ -144,7 +145,13 @@ namespace Latios.FlowFieldNavigation
             field = new Field(config.FieldSettings, config.Transform, allocator);
 
             var dependency = inputDeps;
-            dependency = new FlowFieldInternal.BuildCellsBodiesJob { Field = field }.ScheduleParallel(field.CellColliders.Length, 32, dependency);
+            dependency = new FlowFieldInternal.BuildCellsJob
+            {
+                FieldTransform = field.Transform.Value,
+                FieldSettings = config.FieldSettings,
+                Aabbs = field.AabbMap,
+                Transforms = field.TransformsMap,
+            }.ScheduleParallel(field.TransformsMap.Length, 32, dependency);
             dependency = config.ProcessObstaclesLayer(in field, dependency);
             if (!config.HasAgentsQuery) return dependency;
             dependency = ScheduleParallel(config.AgentsConfig, in field, dependency);
@@ -171,7 +178,13 @@ namespace Latios.FlowFieldNavigation
             field = new Field(config.FieldSettings, config.Transform, allocator);
 
             var dependency = inputDeps;
-            dependency = new FlowFieldInternal.BuildCellsBodiesJob { Field = field }.Schedule(field.CellColliders.Length, dependency);
+            dependency = new FlowFieldInternal.BuildCellsJob
+            {
+                FieldTransform = field.Transform.Value,
+                FieldSettings = config.FieldSettings,
+                Aabbs = field.AabbMap,
+                Transforms = field.TransformsMap,
+            }.Schedule(field.TransformsMap.Length, dependency);
             dependency = config.ProcessObstaclesLayer(in field, dependency);
             if (!config.HasAgentsQuery) return dependency;
             dependency = Schedule(config.AgentsConfig, in field, dependency);
@@ -188,25 +201,24 @@ namespace Latios.FlowFieldNavigation
         public static JobHandle ScheduleParallel(this BuildAgentsConfig config, in Field field, JobHandle inputDeps = default)
         {
             var dependency = inputDeps;
-            var agentsCount = config.AgentsQuery.CalculateEntityCount();
-            var capacity = agentsCount * 4;
-            var densityHashMap = new NativeParallelMultiHashMap<int, float3>(capacity, Allocator.TempJob);
-
+            var stream = new UnsafeParallelBlockList(UnsafeUtility.SizeOf<FlowFieldInternal.AgentInfluenceData>(), FlowSettings.MaxDensity * JobsUtility.JobWorkerCount, Allocator.TempJob);
+            
             dependency = new FlowFieldInternal.AgentsInfluenceJob
             {
-                DensityHashMap = densityHashMap.AsParallelWriter(),
+                Stream = stream,
                 Field = field,
-                TypeHandles = config.AgentTypeHandles
+                TypeHandles = config.AgentTypeHandles,
             }.ScheduleParallel(config.AgentsQuery, dependency);
-
+            
             dependency = new FlowFieldInternal.AgentsPostProcessJob
             {
-                DensityHashMap = densityHashMap,
+                Stream = stream,
                 DensityMap = field.DensityMap,
                 MeanVelocityMap = field.MeanVelocityMap,
-            }.ScheduleParallel(field.DensityMap.Length, 32, dependency);
-
-            dependency = densityHashMap.Dispose(dependency);
+                UnitsCountMap = field.UnitsCountMap,
+            }.Schedule(dependency);
+            
+            dependency = stream.Dispose(dependency);
             return dependency;
         }
 
@@ -220,35 +232,32 @@ namespace Latios.FlowFieldNavigation
         public static JobHandle Schedule(this BuildAgentsConfig config, in Field field, JobHandle inputDeps = default)
         {
             var dependency = inputDeps;
-            var agentsCount = config.AgentsQuery.CalculateEntityCount();
-            var capacity = agentsCount * 4;
-            var densityHashMap = new NativeParallelMultiHashMap<int, float3>(capacity, Allocator.TempJob);
+            var stream = new UnsafeParallelBlockList(UnsafeUtility.SizeOf<FlowFieldInternal.AgentInfluenceData>(), FlowSettings.MaxDensity * JobsUtility.JobWorkerCount, Allocator.TempJob);
 
             dependency = new FlowFieldInternal.AgentsInfluenceJob
             {
-                DensityHashMap = densityHashMap.AsParallelWriter(),
+                Stream = stream,
                 Field = field,
-                TypeHandles = config.AgentTypeHandles
+                TypeHandles = config.AgentTypeHandles,
             }.Schedule(config.AgentsQuery, dependency);
-
+            
             dependency = new FlowFieldInternal.AgentsPostProcessJob
             {
-                DensityHashMap = densityHashMap,
+                Stream = stream,
                 DensityMap = field.DensityMap,
                 MeanVelocityMap = field.MeanVelocityMap,
-            }.Schedule(field.DensityMap.Length, dependency);
-
-            dependency = densityHashMap.Dispose(dependency);
+                UnitsCountMap = field.UnitsCountMap,
+            }.Schedule(dependency);
+            
+            dependency = stream.Dispose(dependency);
             return dependency;
         }
 
         static JobHandle ProcessObstaclesLayer(this BuildFieldConfig config, in Field field, JobHandle dependency)
         {
             if (!config.HasObstaclesLayer) return dependency;
-
-            var cellsHandle = Physics.BuildCollisionLayer(field.CellColliders).WithSettings(config.ObstaclesLayerSettings).ScheduleParallel(out var cells, Allocator.TempJob, dependency);
-            var obstaclesJob = Physics.FindPairs(in config.ObstaclesLayer, in cells, new FlowFieldInternal.ObstaclesProcessor { Field = field }).ScheduleParallel(cellsHandle);
-            return cells.Dispose(obstaclesJob);
+            var jobHandle = Physics.FindObjects(field.GetAabb(), in config.ObstaclesLayer, new FlowFieldInternal.ObstaclesProcessor { Field = field }).ScheduleSingle(dependency);
+            return jobHandle;
         }
 
         #endregion

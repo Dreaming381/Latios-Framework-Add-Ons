@@ -37,7 +37,7 @@ namespace Latios.Anna
                                        streamData.contactParameters.AsSpan(),
                                        streamData.contactImpulses.AsSpan(),
                                        in streamData.bodyParameters,
-                                       false,
+                                       true,
                                        invNumSolverIterations,
                                        out _);
 
@@ -66,7 +66,7 @@ namespace Latios.Anna
                                        streamData.contactParameters.AsSpan(),
                                        streamData.contactImpulses.AsSpan(),
                                        in streamData.bodyParameters,
-                                       false,
+                                       true,
                                        invNumSolverIterations,
                                        out _);
 
@@ -90,7 +90,7 @@ namespace Latios.Anna
                                        streamData.contactParameters.AsSpan(),
                                        streamData.contactImpulses.AsSpan(),
                                        in streamData.bodyParameters,
-                                       false,
+                                       true,
                                        invNumSolverIterations,
                                        out _);
                 if (firstIteration)

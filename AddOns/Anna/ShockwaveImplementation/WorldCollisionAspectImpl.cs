@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Latios.Psyshock;
+using Latios.Transforms;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -68,6 +69,16 @@ namespace Latios.Shockwave
                 worldEnumerator = Physics.FindObjects(in searchAabb, in collisionWorld, in mask.mask),
                 usesMask        = true
             };
+        }
+
+        private bool ColliderCastPrivate(in Collider colliderToCast, in TransformQvvs castStart, float3 castEnd, out ColliderCastResult result, out LayerBodyInfo worldBodyInfo)
+        {
+            return Physics.ColliderCast(in colliderToCast, in castStart, castEnd, collisionWorld.collisionLayer, out result, out worldBodyInfo);
+        }
+
+        private bool ColliderCastPrivate(in Collider colliderToCast, in TransformQvvs castStart, float3 castEnd, in Mask mask, out ColliderCastResult result, out LayerBodyInfo worldBodyInfo)
+        {
+            return Physics.ColliderCast(in colliderToCast, in castStart, castEnd, collisionWorld, in mask.mask, out result, out worldBodyInfo);
         }
     }
 }

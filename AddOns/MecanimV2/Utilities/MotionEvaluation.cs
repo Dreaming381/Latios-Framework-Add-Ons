@@ -1,4 +1,7 @@
 using System;
+#if LATIOS_FRAMEWORK_14
+using Latios.Calci;
+#endif
 using Latios.Kinemation;
 using Unity.Mathematics;
 

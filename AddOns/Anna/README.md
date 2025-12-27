@@ -17,11 +17,11 @@ provides an API for feeding constraints directly to the solver.
 
 **Requirements:**
 
--   Requires Latios Framework 0.13.0 or newer
+-   Requires Latios Framework 0.13.7 or newer
 
 **Main Author(s):** Dreaming I’m Latios
 
-**Additional Contributors:** Obrazy
+**Additional Contributors:** Obrazy, aqscithe
 
 **Support:** Please make feature requests for features you would like to see
 added! You can use any of the Latios Framework support channels to make
@@ -89,7 +89,8 @@ timestep-dependent.*
 
 You can override the center of mass and the inertia tensor by adding
 `LocalCenterOfMassOverride` and `LocalInertiaOverride` components to the rigid
-body.
+body. Similarly, you can override the gravity value applied to a single rigid
+body with the `GravityOverride` component.
 
 ## Known Issue
 

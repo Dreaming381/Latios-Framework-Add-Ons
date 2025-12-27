@@ -3,6 +3,7 @@
     "rootNamespace": "Latios.Mecanim",
     "references": [
         "GUID:46fe9b4ef94d76744bc0b97bc2f73d94",
+        "GUID:b9c5f905e723bc54eb280c03e635224b",
         "GUID:59e15be979a1f934cac2dcd97dd0ea2b",
         "GUID:11912cc675165314485c904ed61b2e92",
         "GUID:2665a8d13d1b3f18800f46e256720795",
@@ -21,6 +22,22 @@
     "defineConstraints": [
         "LATIOS_ADDON_MECANIM_V2"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.latios.latiosframework",
+            "expression": "0.14.0-preview",
+            "define": "LATIOS_FRAMEWORK_14"
+        },
+        {
+            "name": "com.latios.latiosframework",
+            "expression": "0.14.0-alpha.1",
+            "define": "LATIOS_FRAMEWORK_14"
+        },
+        {
+            "name": "com.latios.latiosframework",
+            "expression": "0.14.0",
+            "define": "LATIOS_FRAMEWORK_14"
+        }
+    ],
     "noEngineReferences": false
 }

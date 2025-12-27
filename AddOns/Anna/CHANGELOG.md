@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] – 2025-9-13
+
+### Added
+
+-   Added optional `GravityOverride` component which can be attached to rigid
+    bodies
+
+### Changed
+
+-   Enabled `UnitySim` friction velocity heuristic to counteract unwanted motion
+    when rigid bodies collide with multiple triangles within a tri-mesh or
+    terrain collider
+
+## [0.2.2] – 2025-8-30
+
+### Changed
+
+-   Updated to Shockwave 0.2.0
+
 ## [0.2.1] – 2025-8-9
 
 ### Added

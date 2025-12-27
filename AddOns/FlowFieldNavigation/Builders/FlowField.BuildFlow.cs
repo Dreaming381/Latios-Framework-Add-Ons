@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Entities.Exposed;
 using Unity.Jobs;
+using Unity.Mathematics;
 
 namespace Latios.FlowFieldNavigation
 {
@@ -94,23 +95,26 @@ namespace Latios.FlowFieldNavigation
 
             var dependency = inputDeps;
 
-            var count = (config.GoalsQuery.HasFilter() || config.GoalsQuery.UsesEnabledFiltering())
-                ? config.GoalsQuery.CalculateEntityCount()
-                : config.GoalsQuery.CalculateEntityCountWithoutFiltering();
-            flow.GoalCells.SetCapacity(count);
-
             dependency = new FlowFieldInternal.CollectGoalsJob
             {
                 Field = config.Field,
-                GoalCells = flow.GoalCells.AsParallelWriter(),
+                GoalCells = flow.GoalCells,
                 TypeHandles = config.TypeHandles
-            }.ScheduleParallel(config.GoalsQuery, dependency);
-
-            dependency = new FlowFieldInternal.CalculateCostsWithPriorityQueueJob
+            }.Schedule(config.GoalsQuery, dependency);
+            
+            dependency = new FlowFieldInternal.ResetJob
             {
-                Field = config.Field,
                 Costs = flow.Costs,
-                GoalCells = flow.GoalCells
+                GoalCells = flow.GoalCells,
+                Width = config.Field.Width
+            }.Schedule(dependency);
+            
+            dependency = new FlowFieldInternal.CalculateCostsWavefrontJob
+            {
+                PassabilityMap = config.Field.PassabilityMap,
+                Width = config.Field.Width, Height = config.Field.Height,
+                Costs = flow.Costs, 
+                GoalCells = flow.GoalCells,
             }.Schedule(dependency);
             
             dependency = new FlowFieldInternal.CalculateDirectionJob
@@ -179,21 +183,22 @@ namespace Latios.FlowFieldNavigation
 
             var dependency = inputDeps;
 
-            var count = (config.GoalsQuery.HasFilter() || config.GoalsQuery.UsesEnabledFiltering())
-                ? config.GoalsQuery.CalculateEntityCount()
-                : config.GoalsQuery.CalculateEntityCountWithoutFiltering();
-            flow.GoalCells.SetCapacity(count);
+            // var count = (config.GoalsQuery.HasFilter() || config.GoalsQuery.UsesEnabledFiltering())
+            //     ? config.GoalsQuery.CalculateEntityCount()
+            //     : config.GoalsQuery.CalculateEntityCountWithoutFiltering();
+            // flow.GoalCells.SetCapacity(count * FlowSettings.MaxFootprintSize * FlowSettings.MaxFootprintSize);
 
             dependency = new FlowFieldInternal.CollectGoalsJob
             {
                 Field = config.Field,
-                GoalCells = flow.GoalCells.AsParallelWriter(),
+                GoalCells = flow.GoalCells,
                 TypeHandles = config.TypeHandles
             }.Schedule(config.GoalsQuery, dependency);
 
-            dependency = new FlowFieldInternal.CalculateCostsWithPriorityQueueJob
+            dependency = new FlowFieldInternal.CalculateCostsWavefrontJob
             {
-                Field = config.Field,
+                PassabilityMap = config.Field.PassabilityMap,
+                Width = config.Field.Width, Height = config.Field.Height,
                 Costs = flow.Costs,
                 GoalCells = flow.GoalCells
             }.Schedule(dependency);
@@ -203,7 +208,6 @@ namespace Latios.FlowFieldNavigation
                 Settings = config.FlowSettings,
                 DirectionMap = flow.DirectionMap,
                 CostField = flow.Costs,
-                DensityField = config.Field.DensityMap,
                 Width = config.Field.Width,
                 Height = config.Field.Height,
             }.Schedule(flow.DirectionMap.Length, dependency);
@@ -235,7 +239,6 @@ namespace Latios.FlowFieldNavigation
                 Settings = flow.Settings,
                 DirectionMap = flow.DirectionMap,
                 CostField = flow.Costs,
-                DensityField = field.DensityMap,
                 Width = field.Width,
                 Height = field.Height,
             }.Schedule(flow.DirectionMap.Length, dependency);

@@ -12,6 +12,7 @@ namespace Latios.Anna
         public half              coefficientOfRestitution;
     }
 
+
     [InternalBufferCapacity(0)]
     public struct AddImpulse : IBufferElementData
     {
@@ -47,5 +48,10 @@ namespace Latios.Anna
     public struct LocalInertiaOverride : IComponentData
     {
         public UnitySim.LocalInertiaTensorDiagonal inertiaDiagonal;
+    }
+
+    public struct GravityOverride : IComponentData
+    {
+        public float3 gravity;
     }
 }
