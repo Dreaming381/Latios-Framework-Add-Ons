@@ -19,7 +19,9 @@ namespace Latios.FlowFieldNavigation
         internal NativeArray<int> PassabilityMap;
         internal NativeArray<float> DensityMap;
         internal NativeArray<float2> MeanVelocityMap;
-        internal NativeArray<ColliderBody> CellColliders;
+        internal NativeArray<int> UnitsCountMap;
+        internal NativeArray<TransformQvvs> TransformsMap;
+        internal NativeArray<Aabb> AabbMap;
 
         FieldSettings settings;
 
@@ -32,7 +34,9 @@ namespace Latios.FlowFieldNavigation
             DensityMap = CollectionHelper.CreateNativeArray<float>(length, allocator);
             PassabilityMap = CollectionHelper.CreateNativeArray<int>(length, allocator);
             MeanVelocityMap = CollectionHelper.CreateNativeArray<float2>(length, allocator);
-            CellColliders = CollectionHelper.CreateNativeArray<ColliderBody>(length, allocator, NativeArrayOptions.UninitializedMemory);
+            TransformsMap = CollectionHelper.CreateNativeArray<TransformQvvs>(length, allocator, NativeArrayOptions.UninitializedMemory);
+            AabbMap = CollectionHelper.CreateNativeArray<Aabb>(length, allocator, NativeArrayOptions.UninitializedMemory);
+            UnitsCountMap = CollectionHelper.CreateNativeArray<int>(length, allocator);
         }
 
         public void Dispose()
@@ -42,7 +46,9 @@ namespace Latios.FlowFieldNavigation
             DensityMap.Dispose();
             MeanVelocityMap.Dispose();
             PassabilityMap.Dispose();
-            CellColliders.Dispose();
+            UnitsCountMap.Dispose();
+            TransformsMap.Dispose();
+            AabbMap.Dispose();
         }
 
         public JobHandle Dispose(JobHandle inputDeps)
@@ -54,7 +60,9 @@ namespace Latios.FlowFieldNavigation
                 DensityMap.Dispose(inputDeps),
                 MeanVelocityMap.Dispose(inputDeps),
                 PassabilityMap.Dispose(inputDeps),
-                CellColliders.Dispose(inputDeps)
+                UnitsCountMap.Dispose(inputDeps),
+                TransformsMap.Dispose(inputDeps),
+                AabbMap.Dispose(inputDeps),
             });
         }
     }

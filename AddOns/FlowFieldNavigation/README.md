@@ -46,7 +46,7 @@ The config does not internally allocate any native containers, so it is safe to 
 
 **WithSettings(FieldSettings settings)** - Provide settings such as grid size, cell size, and grid pivot relative to grid transform.
 
-**WithObstacles(CollisionLayer obstaclesLayer, CollisionLayerSettings settings)** - Provide a `CollisionLayer` for the obstacles. The `CollisionLayerSettings` must be the same as the one it was built with.
+**WithObstacles(CollisionLayer obstaclesLayer)** - Provide a `CollisionLayer` for the obstacles.
 
 **WithAgents(EntityQuery agentsQuery, FlowFieldAgentsTypeHandles agentsHandles)** - Provide an `EntityQuery` for agents to calculate crowd density.
 If using a `FluentQuery`, you can ensure correctness by calling  `PatchQueryForFlowFieldAgents()` in the `FluentQuery` chain. 
@@ -62,7 +62,7 @@ Example:
 state.Dependency = FlowField.BuildField()
     .WithTransform(TransformQvvs.identity)
     .WithSettings(settings.FieldSettings)
-    .WithObstacles(obstacleLayer.Layer, CollisionSettings.Default)
+    .WithObstacles(obstacleLayer.Layer)
     .WithAgents(agentsQuery, in agentsHandles)
     .ScheduleParallel(out var field, state.WorldUpdateAllocator, state.Dependency);
 ```
@@ -101,6 +101,14 @@ state.Dependency = FlowField.AgentsDirections(agentsQuery, handles, SystemAPI.Ti
 state.Dependency = new YourAgentsMovementJob().ScheduleParallel(state.Dependency);
 ```
 
+##### For convenience there is a `FlowFieldAgentAuthoring`, which will bake all the necessary components on the agent.
+`FlowFieldAgentAuthoring` has the following settings: 
+- `FootprintSize` - defines the area in which the agent will influence the density calculation.
+- `MaxDensity` - how much the agent will influence the density in the cells closest to it.
+- `MinDensity` - how much the agent will influence the density in the cells farthest from it.
+
+##### There is also a `FlowFieldGoalAuthoring` that will bake the necessary components for the target entity.
+
 ### Updating
 
 If the obstacles have been changed, or if the field transform needs to be changed, the `Field` must be rebuilt.
@@ -116,13 +124,10 @@ state.Dependency = FlowField.UpdateFlowDirections().ScheduleParallel(field, flow
 
 ## Debug
 
-You can display the grid and direction vectors using `FlowFieldDebug.DrawCells(Field field, Flow flow, JobHandle inputDeps)`.
+You can display direction vectors using `FlowFieldDebug.DrawCells(Field field, Flow flow, JobHandle inputDeps)`.
 Keep in mind that you will most likely need to run the project with the command line argument `-debug-line-buffer-size X`, where X can be as big as 100k+, depending on the size of your grid.
 
 ## Limitations
 
-It is not recommended to use agents larger than 2x2 grid cells.
-
-## Known Issue
-
 At the moment, agent directions and FlowField calculations only work for xz world axes.
+

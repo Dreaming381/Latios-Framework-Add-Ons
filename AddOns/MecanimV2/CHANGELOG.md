@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] – 2025-11-22
+
+### Changed
+
+-   Changed the in-chunk buffer capacities of `MecanimClipEvent` and
+    `MecanimStateTransitionEvent` to 0
+
+## [0.1.4] – 2025-9-13
+
+This release only contains internal compatibility changes
+
 ## [0.1.3] – 2025-7-6
 
 ### Changed

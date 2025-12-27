@@ -2,6 +2,7 @@
 
 namespace Latios.Mecanim
 {
+    [InternalBufferCapacity(0)]
     public struct MecanimClipEvent : IBufferElementData
     {
         public int    nameHash;
@@ -9,6 +10,7 @@ namespace Latios.Mecanim
         public double elapsedTime;
     }
 
+    [InternalBufferCapacity(0)]
     public struct MecanimStateTransitionEvent : IBufferElementData
     {
         public short  stateMachineIndex;
@@ -18,3 +20,4 @@ namespace Latios.Mecanim
         public double elapsedTime;
     }
 }
+

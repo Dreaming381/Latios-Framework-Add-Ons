@@ -731,7 +731,11 @@ namespace Latios.Mecanim.Authoring.Systems
                         {
                             var pjmag = math.length(pj);
                             pipj.x = (pjmag - pimag) / (0.5f * (pimag + pjmag));
-                            var direction     = LatiosMath.ComplexMul(pi, new float2(pj.x, -pj.y));
+#if LATIOS_FRAMEWORK_14
+                            var direction = Latios.Calci.LatiosMath.ComplexMul(pi, new float2(pj.x, -pj.y));
+#else
+                            var direction = LatiosMath.ComplexMul(pi, new float2(pj.x, -pj.y));
+#endif
                             var directionAtan = math.select(math.atan2(direction.y, direction.x), 0, pi.Equals(float2.zero) || pj.Equals(float2.zero));
                             pipj.y = MecanimControllerBlob.BlendTree.kFreeformDirectionalBias * directionAtan;
                             pipj.w = 1f / (0.5f * (pimag + pjmag));

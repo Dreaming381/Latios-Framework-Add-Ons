@@ -1,4 +1,4 @@
-# Latios Framework Add-Ons [0.4.1]
+# Latios Framework Add-Ons [0.6.1]
 
 This is an extra Unity package for the Latios Framework containing various
 add-on modules and functionality.
@@ -33,10 +33,6 @@ how to contribute your own add-ons or improve existing add-ons.
 
 ## Add-Ons Directory
 
-### Physics
-
--   Anna – A rigid body physics engine focused on ease-of-use
-
 ### Animation
 
 -   Mecanim V1 (DreamingImLatios & Sovogal) – The original Mecanim runtime
@@ -53,6 +49,12 @@ how to contribute your own add-ons or improve existing add-ons.
 -   Navigator (clandais) – A nav-mesh solution that bakes Unity NavMesh objects
     into a pure ECS runtime with custom runtime agent navigation
 
+### Physics
+
+-   Anna (DreamingImLatios) – A rigid body physics engine focused on ease-of-use
+-   Shockwave (DreamingImLatios) – A unified API that other add-ons may use such
+    that they will be compatible with any physics engine supporting Shockwave
+
 ### Rendering and Visual Effects
 
 -   Cyline (DreamingImLatios port) – A simple 3D Line Renderer
@@ -60,10 +62,16 @@ how to contribute your own add-ons or improve existing add-ons.
     pure ECS (still under construction)
 -   Terrainy - A Unity terrain support for ECS runtime (still under construction)
 
+### Tweening
+
+-   Smoothie (DreamingImLatios) – A data-driven entity-based tweening solution
+    with dynamic bindings (very experimental)
+
 ## Special Thanks To These Awesome Contributors
 
 -   Webheart – Primary author of FlowFields Navigation
 -   clandais – Primary author of Navigator
 -   Alejandro Nunez – Primary co-author of Mecanim V2
 -   Sovogal – Primary author of Mecanim V1
+-   aqscithe – Contributor to Anna and Psyshock
 -   Obrazy – Contributor to Anna
