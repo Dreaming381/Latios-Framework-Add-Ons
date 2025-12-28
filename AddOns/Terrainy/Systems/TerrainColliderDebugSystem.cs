@@ -53,6 +53,9 @@ namespace Latios.Terrainy.Systems
 		{
 #if !LATIOS_TRANSFORMS_UNITY
 			if (!_current.leftButton.wasPressedThisFrame) return;
+			if (_camera == null) {
+				_camera = Camera.main;
+			}
 			var unityRay = _camera.ScreenPointToRay(_current.position.ReadValue());
 			Ray ray = new Ray(unityRay.origin, unityRay.direction, 100f);
 			Debug.DrawLine(ray.start, ray.end, Color.blue, 1f);

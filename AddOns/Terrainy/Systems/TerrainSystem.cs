@@ -131,15 +131,17 @@ namespace Latios.Terrainy.Systems
 #if LATIOS_TRANSFORMS_UNITY
 				var wt = SystemAPI.GetComponent<LocalToWorld>(terrainEntity); 
 				CreateDetailAndTreeInstances(ref state, ref detailCellElements, ref detailInstanceElements, ref entityManager, wt, ref commandBuffer, ref commandBufferLocal, terrainEntity, ref treeInstances);
-				commandBuffer.Playback(entityManager);
-				commandBufferLocal.Playback(entityManager);
 #else
 				var wt = SystemAPI.GetComponent<WorldTransform>(terrainEntity);
 				CreateDetailAndTreeInstances(ref state, ref detailCellElements, ref detailInstanceElements, ref entityManager, wt, ref commandBuffer, terrainEntity, ref treeInstances);
-				commandBuffer.Playback(entityManager);
 #endif
-
 			}
+#if LATIOS_TRANSFORMS_UNITY
+			commandBuffer.Playback(entityManager);
+			commandBufferLocal.Playback(entityManager);
+#else
+			commandBuffer.Playback(entityManager);
+#endif
 		}
 
 		#if LATIOS_TRANSFORMS_UNITY

@@ -44,12 +44,8 @@ namespace Latios.Terrainy.Authoring
 			NativeArray<TreePrototypeElement> entitiesPrototypes = new NativeArray<TreePrototypeElement>(data.treePrototypes.Length, Allocator.Temp);
 			NativeArray<DetailsInstanceElement> detailPrototypesArray = new NativeArray<DetailsInstanceElement>(data.detailPrototypes.Length, Allocator.Temp);
 			NativeList<DetailCellElement> detailCells = new NativeList<DetailCellElement>(Allocator.Temp);
-
-			if (!IsBakingForEditor())
-			{
-				data = Object.Instantiate(data);
-
-#region Bake Trees
+			
+			#region Bake Trees
 				TreePrototype[] treePrototypes = data.treePrototypes;
 				for (var i = 0; i < treePrototypes.Length; i++)
 				{
@@ -190,8 +186,11 @@ namespace Latios.Terrainy.Authoring
 						}
 					}
 				}
-
 #endregion
+			
+			if (!IsBakingForEditor())
+			{
+				data = Object.Instantiate(data);
 
 				// Todo: This probably needs more testing and iteration. TrustNoOneElse: Didn't find any problems here
 				data.detailPrototypes = null;

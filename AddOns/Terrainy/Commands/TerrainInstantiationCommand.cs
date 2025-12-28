@@ -25,15 +25,14 @@ namespace Latios.Terrainy.Commands
 		[MonoPInvokeCallback(typeof(IInstantiateCommand.OnPlayback))]
 		internal static void CallbackFunction(ref IInstantiateCommand.Context context)
 		{
-			//Debug.Log($"Test with entities: {context.entities.Length}");
 			var terrainToCreatedEntities = new NativeHashMap<Entity, NativeList<Entity>>(32, Allocator.Temp);
 			for (var index = 0; index < context.entities.Length; index++)
 			{
 				Entity entity = context.entities[index];
 				var command = context.ReadCommand<TerrainInstantiationCommand>(index);
-				if (terrainToCreatedEntities.ContainsKey(command.terrainEntity))
+				if (terrainToCreatedEntities.TryGetValue(command.terrainEntity, out NativeList<Entity> list))
 				{
-					terrainToCreatedEntities[command.terrainEntity].Add(entity);
+					list.Add(entity);
 				}
 				else
 				{
