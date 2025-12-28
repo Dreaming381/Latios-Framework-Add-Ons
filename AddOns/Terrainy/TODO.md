@@ -31,5 +31,5 @@ Thanks to Dreaming I'm Latios for providing this list
 -   [ ] Group terrain prefabs in probably blackboards?
 -   [ ] Grass Shader seems very expensive, investigate and doesn't support ortographic camera with billboard support
 -   [x] Support qvvs from latios for details/trees
--   [ ] Add HDRP to the shader (needs to be open in a HDRP project for that)
+-   [x] Add HDRP to the shader (needs to be open in a HDRP project for that)
 -   [ ] Holes in the terrain debug draw is not supported at the moment
