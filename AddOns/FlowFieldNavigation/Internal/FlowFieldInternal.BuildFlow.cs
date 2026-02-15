@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
@@ -48,61 +49,6 @@ namespace Latios.FlowFieldNavigation
         }
 
         [BurstCompile]
-        internal struct CalculateCostsWithPriorityQueueJob : IJob
-        {
-            const float HeapCapacityFactor = 0.35f;
-
-            [ReadOnly] internal NativeArray<int> PassabilityMap;
-            [ReadOnly] internal NativeHashSet<int2> GoalCells;
-            internal int Width, Height;
-
-            internal NativeArray<float> Costs;
-
-            public void Execute()
-            {
-                for (var i = 0; i < Costs.Length; i++) Costs[i] = FlowSettings.PassabilityLimit + 1;
-                int initialHeapCapacity = math.max(64, (int)(Width * Height * HeapCapacityFactor));
-                var queue = new NativePriorityQueue<CostEntry, CostComparer>(initialHeapCapacity, Allocator.Temp);
-                var visited = new NativeBitArray(Width * Height, Allocator.Temp);
-
-                foreach (var goal in GoalCells)
-                {
-                    queue.Enqueue(new(goal, 0));
-                    Costs[Grid.CellToIndex(Width, goal)] = 0;
-                }
-
-                while (queue.TryDequeue(out var current))
-                {
-                    var currentCost = Costs[Grid.CellToIndex(Width, current.Pos)];
-
-                    for (var dir = Grid.Direction.Up; dir <= Grid.Direction.DownRight; dir++)
-                    {
-                        if (!Grid.TryGetNeighborCell(Width, Height, current.Pos, dir, out var neighbor)) continue;
-
-                        var neighborIndex = Grid.CellToIndex(Width, neighbor);
-                        if (visited.IsSet(neighborIndex)) continue;
-
-                        if (PassabilityMap[neighborIndex] < 0) continue;
-
-                        var moveCost = PassabilityMap[neighborIndex] + (dir > Grid.Direction.Right ? math.SQRT2 : 1);
-
-                        var newCost = currentCost + moveCost;
-
-                        if (newCost < Costs[neighborIndex])
-                        {
-                            Costs[neighborIndex] = newCost;
-                            queue.Enqueue(new(neighbor, newCost));
-                            visited.Set(neighborIndex, true);
-                        }
-                    }
-                }
-
-                queue.Dispose();
-                visited.Dispose();
-            }
-        }
-        
-        [BurstCompile]
         internal struct CalculateCostsWavefrontJob : IJob
         {
             [ReadOnly] internal NativeArray<int> PassabilityMap;
@@ -114,53 +60,86 @@ namespace Latios.FlowFieldNavigation
 
             public void Execute()
             {
-                var wave = new NativeList<int2>(GoalCells.Count, Allocator.Temp);
+                var totalCells = Width * Height;
+                var wave = new NativeList<int>(GoalCells.Count * 4, Allocator.Temp);
+                var nextWave = new NativeList<int>(GoalCells.Count * 4, Allocator.Temp);
+                var inQueue = new NativeBitArray(totalCells, Allocator.Temp);
 
                 foreach (var goal in GoalCells)
                 {
-                    wave.Add(goal);
+                    var idx = goal.y * Width + goal.x;
+                    wave.Add(idx);
+                    inQueue.Set(idx, true);
                 }
-
-                var nextWave = new NativeList<int2>(wave.Capacity, Allocator.Temp);
 
                 while (wave.Length > 0)
                 {
                     for (var i = 0; i < wave.Length; i++)
                     {
-                        var cell = wave[i];
-                        var cellIndex = Grid.CellToIndex(Width, cell);
-                        
+                        var cellIndex = wave[i];
                         var currentCost = Costs[cellIndex];
+                        var cellX = cellIndex % Width;
+                        var cellY = cellIndex / Width;
 
-                        for (var dir = Grid.Direction.Up; dir <= Grid.Direction.DownRight; dir++)
-                        {
-                            if (!Grid.TryGetNeighborCell(Width, Height, cell, dir, out var neighbor)) continue;
-
-                            var neighborIndex = Grid.CellToIndex(Width, neighbor);
-                            var passability = PassabilityMap[neighborIndex];
-
-                            if (passability < 0 || passability >= FlowSettings.PassabilityLimit) continue;
-
-                            var moveCost = passability + (dir > Grid.Direction.Right ? math.SQRT2 : 1f);
-                            var newCost = currentCost + moveCost;
-
-                            if (newCost < Costs[neighborIndex])
-                            {
-                                Costs[neighborIndex] = newCost;
-                                nextWave.Add(neighbor);
-                            }
-                        }
+                        ProcessNeighbor(cellIndex, cellX, cellY, 0, Width, currentCost, 1f, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 1, -Width, currentCost, 1f, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 2, -1, currentCost, 1f, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 3, 1, currentCost, 1f, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 4, Width - 1, currentCost, math.SQRT2, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 5, Width + 1, currentCost, math.SQRT2, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 6, -Width - 1, currentCost, math.SQRT2, ref nextWave, ref inQueue);
+                        ProcessNeighbor(cellIndex, cellX, cellY, 7, -Width + 1, currentCost, math.SQRT2, ref nextWave, ref inQueue);
                     }
 
                     (wave, nextWave) = (nextWave, wave);
                     nextWave.Clear();
+                    inQueue.Clear();
                 }
 
                 wave.Dispose();
                 nextWave.Dispose();
+                inQueue.Dispose();
             }
-        }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void ProcessNeighbor(int cellIndex, int cellX, int cellY, int dir, int offset, float currentCost, float baseCost, ref NativeList<int> nextWave, ref NativeBitArray inQueue)
+            {
+                if (!IsNeighborValid(cellX, cellY, dir)) return;
+
+                var neighborIndex = cellIndex + offset;
+                var passability = PassabilityMap[neighborIndex];
+
+                if ((uint)passability >= FlowSettings.PassabilityLimit) return;
+
+                var newCost = currentCost + passability + baseCost;
+
+                if (newCost < Costs[neighborIndex])
+                {
+                    Costs[neighborIndex] = newCost;
+
+                    if (!inQueue.IsSet(neighborIndex))
+                    {
+                        nextWave.Add(neighborIndex);
+                        inQueue.Set(neighborIndex, true);
+                    }
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool IsNeighborValid(int x, int y, int dir) => dir switch
+            {
+                0 => y < Height - 1,
+                1 => y > 0,
+                2 => x > 0,
+                3 => x < Width - 1,
+                4 => x > 0 && y < Height - 1,
+                5 => x < Width - 1 && y < Height - 1,
+                6 => x > 0 && y > 0,
+                7 => x < Width - 1 && y > 0,
+                _ => false
+            };
+        }
+        
         [BurstCompile]
         internal struct ResetJob : IJob
         {
@@ -181,24 +160,7 @@ namespace Latios.FlowFieldNavigation
                 }
             }
         }
-
-        internal struct CostComparer : IComparer<CostEntry>
-        {
-            public int Compare(CostEntry x, CostEntry y) => x.Cost.CompareTo(y.Cost);
-        }
-
-        internal readonly struct CostEntry
-        {
-            public readonly float Cost;
-            public readonly int2 Pos;
-
-            public CostEntry(int2 pos, float cost)
-            {
-                Pos = pos;
-                Cost = cost;
-            }
-        }
-
+        
         [BurstCompile]
         internal struct CalculateDirectionJob : IJobFor
         {
@@ -212,8 +174,6 @@ namespace Latios.FlowFieldNavigation
 
             public void Execute(int index)
             {
-                var cell = Grid.IndexToCell(index, Width);
-                var gradient = float2.zero;
                 var currentCost = CostField[index];
 
                 if (currentCost <= 0)
@@ -222,24 +182,45 @@ namespace Latios.FlowFieldNavigation
                     return;
                 }
 
-                var current = currentCost + DensityField[index] * Settings.DensityInfluence;
+                var cellX = index % Width;
+                var cellY = index / Width;
+                var densityInfluence = Settings.DensityInfluence;
+                var current = currentCost + DensityField[index] * densityInfluence;
 
-                for (var dir = Grid.Direction.Up; dir <= Grid.Direction.Right; dir++)
-                {
-                    if (!Grid.TryGetNeighborCell(Width, Height, cell, dir, out var neighbor)) continue;
+                var gradient = float2.zero;
 
-                    var neighborIndex = Grid.CellToIndex(Width, neighbor);
-                    var neighborCost = CostField[neighborIndex];
-                    if (neighborCost > FlowSettings.PassabilityLimit) continue;
-                    var resultCost = neighborCost + DensityField[neighborIndex] * Settings.DensityInfluence;
-
-                    var costDifference = resultCost - current;
-                    var addGradient = costDifference * dir.ToVector();
-                    gradient += addGradient;
-                }
+                AccumulateGradient(index, cellX, cellY, 0, Width, new float2(0, 1), current, densityInfluence, ref gradient);
+                AccumulateGradient(index, cellX, cellY, 1, -Width, new float2(0, -1), current, densityInfluence, ref gradient);
+                AccumulateGradient(index, cellX, cellY, 2, -1, new float2(-1, 0), current, densityInfluence, ref gradient);
+                AccumulateGradient(index, cellX, cellY, 3, 1, new float2(1, 0), current, densityInfluence, ref gradient);
 
                 DirectionMap[index] = math.normalizesafe(-gradient);
             }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void AccumulateGradient(int cellIndex, int cellX, int cellY, int dir, int offset, float2 dirVector, float current, float densityInfluence, ref float2 gradient)
+            {
+                if (!IsNeighborValid(cellX, cellY, dir)) return;
+
+                var neighborIndex = cellIndex + offset;
+                var neighborCost = CostField[neighborIndex];
+
+                if (neighborCost > FlowSettings.PassabilityLimit) return;
+
+                var resultCost = neighborCost + DensityField[neighborIndex] * densityInfluence;
+                var costDifference = resultCost - current;
+                gradient += costDifference * dirVector;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            bool IsNeighborValid(int x, int y, int dir) => dir switch
+            {
+                0 => y < Height - 1,  // Up
+                1 => y > 0,           // Down
+                2 => x > 0,           // Left
+                3 => x < Width - 1,   // Right
+                _ => false
+            };
         }
     }
 }
