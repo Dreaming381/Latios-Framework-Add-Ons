@@ -48,6 +48,8 @@ The config does not internally allocate any native containers, so it is safe to 
 
 **WithObstacles(CollisionLayer obstaclesLayer)** - Provide a `CollisionLayer` for the obstacles.
 
+**WithObstacles(CollisionWorld collisionWorld, EntityQueryMask obstaclesMask)** - Provide a `CollisionWorld` for the obstacles.
+
 **WithAgents(EntityQuery agentsQuery, FlowFieldAgentsTypeHandles agentsHandles)** - Provide an `EntityQuery` for agents to calculate crowd density.
 If using a `FluentQuery`, you can ensure correctness by calling  `PatchQueryForFlowFieldAgents()` in the `FluentQuery` chain. 
 Otherwise, the query must contain the following components: `FlowField.AgentDirection`, `FlowField.PrevPosition`, `FlowField.Velocity` and `WorldTransform`.

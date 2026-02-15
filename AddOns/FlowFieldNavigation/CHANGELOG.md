@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-2-15
+
+- Added new API for CollisionWorld integration in obstacle detection
+- Optimized BuildFlow job algorithms for improved performance 
+
 ## [0.2.0] - 2025-9-17
 
 - Improved obstacles calculation performance
