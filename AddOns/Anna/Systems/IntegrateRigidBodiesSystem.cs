@@ -176,6 +176,7 @@ namespace Latios.Anna.Systems
                 transform = UnitySim.ApplyInertialPoseWorldTransformDeltaToWorldTransform(transform,
                                                                                           in previousInertialPose,
                                                                                           in state.inertialPoseWorldTransform);
+                transform.rotation = math.normalize(transform.rotation);
                 rigidBody.velocity = state.velocity;
                 return true;
             }
