@@ -20,9 +20,6 @@ namespace Latios.Anna.Systems
             GetOrCreateAndAddManagedSystem<ConstraintWritingSuperSystem>();
             GetOrCreateAndAddUnmanagedSystem<SolveSystem>();
             GetOrCreateAndAddUnmanagedSystem<IntegrateRigidBodiesSystem>();
-#if LATIOS_ADDON_SHOCKWAVE
-            GetOrCreateAndAddUnmanagedSystem<BuildWorldCollisionAspectSystem>();
-#endif
         }
     }
 
@@ -34,6 +31,7 @@ namespace Latios.Anna.Systems
         {
             GetOrCreateAndAddUnmanagedSystem<BuildBroadphaseCollisionWorldSystem>();
             GetOrCreateAndAddUnmanagedSystem<CreateRigidBodyAxesLockConstraintsSystem>();
+            GetOrCreateAndAddUnmanagedSystem<WriteJointConstraintsSystem>();
             GetOrCreateAndAddUnmanagedSystem<FindCollisionsSystem>();
 
             EnableSystemSorting = true;

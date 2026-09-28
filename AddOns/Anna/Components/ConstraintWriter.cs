@@ -240,6 +240,7 @@ namespace Latios.Anna
                                                                                             out var pair);
             pair.userByte     = SolveByteCodes.positionConstraint;
             streamData.indexA = rigidBodyHandleA.index;
+            streamData.indexB = -1;
             UnitySim.BuildJacobian(out streamData.parameters,
                                    inertialPoseA,
                                    jointLocalA,
@@ -476,6 +477,7 @@ namespace Latios.Anna
                                                                                                   out var pair);
                     pair.userByte     = SolveByteCodes.rotationConstraint1;
                     streamData.indexA = rigidBodyHandleA.index;
+                    streamData.indexB = -1;
                     UnitySim.BuildJacobian(out streamData.parameters,
                                            inertialPoseA.rot,
                                            jointLocalA,
@@ -499,6 +501,7 @@ namespace Latios.Anna
                                                                                                   out var pair);
                     pair.userByte     = SolveByteCodes.rotationConstraint2;
                     streamData.indexA = rigidBodyHandleA.index;
+                    streamData.indexB = -1;
                     UnitySim.BuildJacobian(out streamData.parameters,
                                            inertialPoseA.rot,
                                            jointLocalA,
@@ -522,6 +525,7 @@ namespace Latios.Anna
                                                                                                   out var pair);
                     pair.userByte     = SolveByteCodes.rotationConstraint3;
                     streamData.indexA = rigidBodyHandleA.index;
+                    streamData.indexB = -1;
                     UnitySim.BuildJacobian(out streamData.parameters,
                                            inertialPoseA.rot,
                                            jointLocalA,

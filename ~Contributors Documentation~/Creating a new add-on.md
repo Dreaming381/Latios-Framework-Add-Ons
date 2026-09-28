@@ -14,7 +14,7 @@ Third, in the *AddOns* folder of this repository in your project, create a new
 folder named after your add-on.
 
 Fourth, decide on a scripting define symbol for your add-on. The convention is
-`LATIOS_ADDONS_<yourAddOnName>`.
+`LATIOS_ADDON_<yourAddOnName>`.
 
 ## Creating Assembly Definitions
 

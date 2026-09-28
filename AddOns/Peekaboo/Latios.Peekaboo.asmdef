@@ -1,0 +1,28 @@
+{
+    "name": "Latios.Peekaboo",
+    "rootNamespace": "Latios.Peekaboo",
+    "references": [
+        "Latios.Core",
+        "Latios.Transforms",
+        "Latios.Kinemation",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Entities.Graphics",
+        "Unity.Mathematics",
+        "Unity.Mathematics.Extensions",
+        "Unity.Transforms"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "LATIOS_ADDON_PEEKABOO"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -3,7 +3,6 @@ using Latios.Navigator.Components;
 using Latios.Navigator.Utils;
 using Latios.Transforms;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -11,7 +10,7 @@ using Unity.Mathematics;
 namespace Latios.Navigator.Systems
 {
     [RequireMatchingQueriesForUpdate]
-    internal partial struct AgentEdgePathSystem : ISystem
+    internal partial struct AgentEdgePathSystem : ISystem, ILatiosApi
     {
         EntityQuery          m_query;
         LatiosWorldUnmanaged m_latiosWorld;
@@ -19,9 +18,10 @@ namespace Latios.Navigator.Systems
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
+            this.OnCreateForLatios(ref state);
             m_latiosWorld = state.GetLatiosWorldUnmanaged();
             m_query       = state.Fluent()
-                            .With<WorldTransform>()
+                            .With<WorldTransform>(true)
                             .With<NavmeshAgentTag>()
                             .WithEnabled<NavMeshAgent>()
                             .With<AgentDestination>()
@@ -39,25 +39,16 @@ namespace Latios.Navigator.Systems
             var navMeshSurfaceBlob =
                 m_latiosWorld.GetNavMeshSurfaceBlob();
 
-            var job = new PathJob
+            new PathJob
             {
-                AgentHasEdgePathTagLookup          = SystemAPI.GetComponentLookup<AgentHasEdgePathTag>(),
-                AgenPathRequestedTagLookup         = SystemAPI.GetComponentLookup<AgenPathRequestedTag>(),
-                NavMeshSurfaceBlob                 = navMeshSurfaceBlob,
-                TransformAspectParallelChunkHandle = new TransformAspectParallelChunkHandle(SystemAPI.GetComponentLookup<WorldTransform>(false),
-                                                                                            SystemAPI.GetComponentTypeHandle<RootReference>(true),
-                                                                                            SystemAPI.GetBufferLookup<EntityInHierarchy>(true),
-                                                                                            SystemAPI.GetBufferLookup<EntityInHierarchyCleanup>(true),
-                                                                                            SystemAPI.GetEntityStorageInfoLookup(),
-                                                                                            ref state)
-            };
-            state.Dependency = job.ScheduleByRef(state.Dependency);
-            state.Dependency = job.TransformAspectParallelChunkHandle.ScheduleChunkGrouping(state.Dependency);
-            state.Dependency = job.GetTransformsScheduler().ScheduleParallel(state.Dependency);
+                AgentHasEdgePathTagLookup  = SystemAPI.GetComponentLookup<AgentHasEdgePathTag>(),
+                AgenPathRequestedTagLookup = SystemAPI.GetComponentLookup<AgenPathRequestedTag>(),
+                NavMeshSurfaceBlob         = navMeshSurfaceBlob,
+            }.ScheduleParallel(this.GetApi(ref state), m_query);
         }
 
         [BurstCompile]
-        partial struct PathJob : IJobEntity, IJobChunkParallelTransform, IJobEntityChunkBeginEnd
+        partial struct PathJob : IJobEach
         {
             [BurstCompile]
             struct QueueElement
@@ -77,26 +68,22 @@ namespace Latios.Navigator.Systems
             [ReadOnly]                            public NavMeshSurfaceBlobReference           NavMeshSurfaceBlob;
             [NativeDisableParallelForRestriction] public ComponentLookup<AgentHasEdgePathTag>  AgentHasEdgePathTagLookup;
             [NativeDisableParallelForRestriction] public ComponentLookup<AgenPathRequestedTag> AgenPathRequestedTagLookup;
-            public TransformAspectParallelChunkHandle                                          TransformAspectParallelChunkHandle;
 
-            public ref TransformAspectParallelChunkHandle transformAspectHandleAccess => ref TransformAspectParallelChunkHandle.RefAccess();
-
-            void Execute(Entity entity, [EntityIndexInChunk] int indexInChunk,
-                         in NavMeshAgent navmeshAgent,
-                         in AgentDestination destination,
-                         ref AgentPath agentPath,
-                         ref DynamicBuffer<AgentPathEdge> buffer)
+            public void Execute(Entity entity,
+                                in WorldTransform transform,
+                                in NavMeshAgent navmeshAgent,
+                                in AgentDestination destination,
+                                ref AgentPath agentPath,
+                                ref DynamicBuffer<AgentPathEdge> buffer)
             {
-                var transform = TransformAspectParallelChunkHandle[indexInChunk];
-
                 ref var blobAsset           = ref NavMeshSurfaceBlob.NavMeshSurfaceBlob.Value;
                 var     destinationPosition = destination.Position;  // Target position for the funnel algorithm
 
                 // Determine start and goal triangles for A*
-                if (!NavUtils.TryFindTriangleContainingPoint(transform.worldPosition, ref blobAsset,
+                if (!NavUtils.TryFindTriangleContainingPoint(transform.position, ref blobAsset,
                                                              out var startTriangleIndex))
                     // Agent is not on the navmesh, find the closest triangle to the agent's position
-                    if (!NavUtils.FindClosestTriangleToPoint(transform.worldPosition, ref blobAsset,
+                    if (!NavUtils.FindClosestTriangleToPoint(transform.position, ref blobAsset,
                                                              out startTriangleIndex))
                     {
                         // No triangles found near the agent, cannot proceed with pathfinding
@@ -125,7 +112,7 @@ namespace Latios.Navigator.Systems
                     // Add a "degenerate" portal or handle in funnel algorithm
                     buffer.Add(new AgentPathEdge
                     {
-                        PortalVertex1 = transform.worldPosition, PortalVertex2 = destinationPosition
+                        PortalVertex1 = transform.position, PortalVertex2 = destinationPosition
                     });
 
                     AgenPathRequestedTagLookup.SetComponentEnabled(entity, false);
@@ -140,7 +127,7 @@ namespace Latios.Navigator.Systems
                 {
                     Index    = startTriangleIndex,  // Start A* from the agent's current triangle
                     Cost     = 0,
-                    MidPoint = transform.worldPosition  // Use agent's position as the initial midpoint
+                    MidPoint = transform.position  // Use agent's position as the initial midpoint
                 });
 
                 var cameFrom  = new NativeParallelHashMap<int, int>(blobAsset.Triangles.Length, Allocator.Temp);
@@ -197,7 +184,7 @@ namespace Latios.Navigator.Systems
                 {
                     buffer.Add(new AgentPathEdge
                     {
-                        PortalVertex1 = transform.worldPosition, PortalVertex2 = transform.worldPosition
+                        PortalVertex1 = transform.position, PortalVertex2 = transform.position
                     });
 
                     AgenPathRequestedTagLookup.SetComponentEnabled(entity, false);
@@ -238,8 +225,8 @@ namespace Latios.Navigator.Systems
 
                 buffer.Add(new AgentPathEdge
                 {
-                    PortalVertex1 = transform.worldPosition,
-                    PortalVertex2 = transform.worldPosition
+                    PortalVertex1 = transform.position,
+                    PortalVertex2 = transform.position
                 });  // Add start position as first portal vertex
 
                 // Reverse the order of portals to start from the agent's position
@@ -262,15 +249,6 @@ namespace Latios.Navigator.Systems
 
                 AgenPathRequestedTagLookup.SetComponentEnabled(entity, false);
                 AgentHasEdgePathTagLookup.SetComponentEnabled(entity, true);
-            }
-
-            public bool OnChunkBegin(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-            {
-                return TransformAspectParallelChunkHandle.OnChunkBegin(in chunk, unfilteredChunkIndex, useEnabledMask, in chunkEnabledMask);
-            }
-
-            public void OnChunkEnd(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask, bool chunkWasExecuted)
-            {
             }
         }
     }

@@ -8,36 +8,32 @@ namespace Latios.Anna.Systems
     [UpdateInGroup(typeof(ConstraintWritingSuperSystem), OrderFirst = true)]
     [DisableAutoCreation]
     [BurstCompile]
-    public partial struct BuildBroadphaseCollisionWorldSystem : ISystem, ISystemNewScene
+    public partial struct BuildBroadphaseCollisionWorldSystem : ISystem, ISystemNewScene, ILatiosApi
     {
-        LatiosWorldUnmanaged latiosWorld;
-
-        BuildCollisionWorldTypeHandles m_handles;
-        EntityQuery                    m_query;
+        EntityQuery m_query;
 
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            latiosWorld = state.GetLatiosWorldUnmanaged();
-            m_handles   = new BuildCollisionWorldTypeHandles(ref state);
-            m_query     = state.Fluent().WithAnyEnabled<EnvironmentCollisionTag, KinematicCollisionTag, RigidBody>(true).PatchQueryForBuildingCollisionWorld().Build();
+            this.OnCreateForLatios(ref state);
+            m_query = state.Fluent().WithAnyEnabled<EnvironmentCollisionTag, KinematicCollisionTag, RigidBody>(true).PatchQueryForBuildingCollisionWorld().Build();
         }
 
         public void OnNewScene(ref SystemState state)
         {
-            latiosWorld.sceneBlackboardEntity.AddOrSetCollectionComponentAndDisposeOld<BroadphaseCollisionWorld>(default);
+            this.GetApi(ref state).sceneBlackboardEntity.AddOrSetCollectionComponentAndDisposeOld<BroadphaseCollisionWorld>(default);
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            m_handles.Update(ref state);
-            var physicsSettings = latiosWorld.GetPhysicsSettings();
+            var api             = this.GetApi(ref state);
+            var physicsSettings = api.latiosWorld.GetPhysicsSettings();
+            var handles         = api.Get<BuildCollisionWorldTypeHandles>();
+            state.Dependency    = Physics.BuildCollisionWorld(m_query, in handles).WithSettings(physicsSettings.collisionLayerSettings).WithWorldIndex(2)
+                                  .ScheduleParallel(out var collisionWorld, state.WorldUpdateAllocator, state.Dependency);
 
-            state.Dependency = Physics.BuildCollisionWorld(m_query, in m_handles).WithSettings(physicsSettings.collisionLayerSettings).WithWorldIndex(2)
-                               .ScheduleParallel(out var collisionWorld, state.WorldUpdateAllocator, state.Dependency);
-
-            latiosWorld.sceneBlackboardEntity.SetCollectionComponentAndDisposeOld(new BroadphaseCollisionWorld
+            api.sceneBlackboardEntity.SetCollectionComponentAndDisposeOld(new BroadphaseCollisionWorld
             {
                 collisionWorld = collisionWorld
             });

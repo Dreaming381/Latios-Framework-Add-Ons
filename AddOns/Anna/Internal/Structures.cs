@@ -38,7 +38,11 @@ namespace Latios.Anna
         public const byte positionConstraint  = 3;
         public const byte rotationConstraint1 = 4;
         public const byte rotationConstraint2 = 5;
-        public const byte rotationConstraint3 = 6;
+        public const byte rotationConstraint3  = 6;
+        public const byte rotationMotor        = 7;
+        public const byte angularVelocityMotor = 8;
+        public const byte positionMotor        = 9;
+        public const byte linearVelocityMotor  = 10;
     }
 
     struct ContactStreamData
@@ -76,6 +80,39 @@ namespace Latios.Anna
         public int                                             indexA;
         public int                                             indexB;  // negative and bIsRO => environment, otherwise bIsRO => kinematic
         public UnitySim.Rotation3DConstraintJacobianParameters parameters;
+    }
+
+    // Motors accumulate impulse across solver iterations so that the total stays under their cap.
+    struct RotationMotorData
+    {
+        public int                                         indexA;
+        public int                                         indexB;  // negative and bIsRO => environment, otherwise bIsRO => kinematic
+        public UnitySim.Rotation1DMotorJacobianParameters parameters;
+        public float                                       accumulatedImpulse;
+    }
+
+    struct AngularVelocityMotorData
+    {
+        public int                                               indexA;
+        public int                                               indexB;  // negative and bIsRO => environment, otherwise bIsRO => kinematic
+        public UnitySim.Angular1DVelocityMotorJacobianParameters parameters;
+        public float                                             accumulatedImpulse;
+    }
+
+    struct PositionMotorData
+    {
+        public int                                         indexA;
+        public int                                         indexB;  // negative and bIsRO => environment, otherwise bIsRO => kinematic
+        public UnitySim.Position1DMotorJacobianParameters parameters;
+        public float3                                      accumulatedImpulse;
+    }
+
+    struct LinearVelocityMotorData
+    {
+        public int                                               indexA;
+        public int                                               indexB;  // negative and bIsRO => environment, otherwise bIsRO => kinematic
+        public UnitySim.LinearVelocity1DMotorJacobianParameters parameters;
+        public float                                             accumulatedImpulse;
     }
 }
 

@@ -2,7 +2,6 @@
 using Latios.Navigator.Utils;
 using Latios.Transforms;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -10,15 +9,16 @@ using Unity.Mathematics;
 namespace Latios.Navigator.Systems
 {
     [RequireMatchingQueriesForUpdate]
-    internal partial struct AgentPathFunnelingSystem : ISystem
+    internal partial struct AgentPathFunnelingSystem : ISystem, ILatiosApi
     {
         EntityQuery m_query;
 
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
+            this.OnCreateForLatios(ref state);
             m_query = state.Fluent()
-                      .With<WorldTransform>()
+                      .With<WorldTransform>(true)
                       .With<NavmeshAgentTag>()
                       .WithEnabled<NavMeshAgent>()
                       .With<AgentDestination>()
@@ -32,19 +32,10 @@ namespace Latios.Navigator.Systems
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var job = new FunnelJob
+            new FunnelJob
             {
-                AgentHasEdgePathTagLookup          = SystemAPI.GetComponentLookup<AgentHasEdgePathTag>(),
-                TransformAspectParallelChunkHandle = new TransformAspectParallelChunkHandle(SystemAPI.GetComponentLookup<WorldTransform>(false),
-                                                                                            SystemAPI.GetComponentTypeHandle<RootReference>(true),
-                                                                                            SystemAPI.GetBufferLookup<EntityInHierarchy>(true),
-                                                                                            SystemAPI.GetBufferLookup<EntityInHierarchyCleanup>(true),
-                                                                                            SystemAPI.GetEntityStorageInfoLookup(),
-                                                                                            ref state)
-            };
-            state.Dependency = job.ScheduleByRef(state.Dependency);
-            state.Dependency = job.TransformAspectParallelChunkHandle.ScheduleChunkGrouping(state.Dependency);
-            state.Dependency = job.GetTransformsScheduler().ScheduleParallel(state.Dependency);
+                AgentHasEdgePathTagLookup = SystemAPI.GetComponentLookup<AgentHasEdgePathTag>(),
+            }.ScheduleParallel(this.GetApi(ref state), m_query);
         }
 
         /// <summary>
@@ -52,21 +43,16 @@ namespace Latios.Navigator.Systems
         ///     <see href="https://digestingduck.blogspot.com/2010/03/simple-stupid-funnel-algorithm.html" />
         /// </summary>
         [BurstCompile]
-        partial struct FunnelJob : IJobEntity, IJobChunkParallelTransform, IJobEntityChunkBeginEnd
+        partial struct FunnelJob : IJobEach
         {
             [NativeDisableParallelForRestriction] public ComponentLookup<AgentHasEdgePathTag> AgentHasEdgePathTagLookup;
-            public TransformAspectParallelChunkHandle                                         TransformAspectParallelChunkHandle;
 
-            public ref TransformAspectParallelChunkHandle transformAspectHandleAccess => ref TransformAspectParallelChunkHandle.RefAccess();
-
-            void Execute(Entity entity, [EntityIndexInQuery] int entityIndex, [EntityIndexInChunk] int indexInChunk,
-                         ref AgentPath agentPath, in AgentDestination destination, in DynamicBuffer<AgentPathEdge> portals,
-                         ref DynamicBuffer<AgentPathPoint> pathPoints)
+            public void Execute(Entity entity, in WorldTransform worldTransform,
+                                ref AgentPath agentPath, in AgentDestination destination, in DynamicBuffer<AgentPathEdge> portals,
+                                ref DynamicBuffer<AgentPathPoint> pathPoints)
             {
-                var transformAspect = TransformAspectParallelChunkHandle[indexInChunk];
-
                 pathPoints.Clear();
-                var start = transformAspect.worldPosition;
+                var start = worldTransform.position;
                 var end   = destination.Position;
 
                 // No portals, just a direct path
@@ -171,15 +157,6 @@ namespace Latios.Navigator.Systems
                 agentPath.PathLength = pathPoints.Length;
                 agentPath.PathIndex  = 0;
                 AgentHasEdgePathTagLookup.SetComponentEnabled(entity, false);
-            }
-
-            public bool OnChunkBegin(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-            {
-                return TransformAspectParallelChunkHandle.OnChunkBegin(in chunk, unfilteredChunkIndex, useEnabledMask, in chunkEnabledMask);
-            }
-
-            public void OnChunkEnd(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask, bool chunkWasExecuted)
-            {
             }
         }
 

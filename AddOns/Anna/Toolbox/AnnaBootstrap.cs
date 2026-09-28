@@ -12,12 +12,7 @@ namespace Latios.Anna
         /// </summary>
         public static Systems.AnnaSuperSystem InstallAnna(World world)
         {
-            var result = BootstrapTools.InjectSystem(TypeManager.GetSystemTypeIndex<Systems.AnnaSuperSystem>(),                 world);
-
-#if LATIOS_ADDON_SHOCKWAVE
-            BootstrapTools.InjectSystem(TypeManager.GetSystemTypeIndex<Systems.BuildWorldCollisionAspectSystem>(), world);
-#endif
-
+            var result = BootstrapTools.InjectSystem(TypeManager.GetSystemTypeIndex<Systems.AnnaSuperSystem>(), world);
             return result.systemManaged as Systems.AnnaSuperSystem;
         }
     }

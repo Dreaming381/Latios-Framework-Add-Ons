@@ -1,0 +1,26 @@
+{
+    "name": "Latios.Mash.Editor",
+    "rootNamespace": "Latios.Mash.Editor",
+    "references": [
+        "Latios.Mash",
+        "Latios.Core",
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Collections",
+        "Unity.Mathematics",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "LATIOS_ADDON_MASH"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-9-27
+
+### Added
+
+-   Added Mash v0.1.0
+-   Added Peekaboo v0.1.0
+-   Added Ribbons v0.1.0
+-   Added Waitress v0.1.0
+
+### Changed
+
+-   Updated Anna to v0.4.0
+-   Updated Navigator
+
+### Fixed
+
+-   Fixed the path of the Samples\~ folder so that Unity ignores it
+
+### Removed
+
+-   Removed Shockwave
+
 ## [0.8.5] - 2026-7-25
 
 ### Changed

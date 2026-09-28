@@ -1,0 +1,24 @@
+{
+    "name": "Latios.Mash",
+    "rootNamespace": "Latios.Mash",
+    "references": [
+        "Latios.Core",
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Collections",
+        "Unity.Mathematics",
+        "Unity.Burst",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "LATIOS_ADDON_MASH"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

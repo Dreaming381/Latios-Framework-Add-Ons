@@ -25,62 +25,69 @@ namespace Latios.Anna.Authoring
         [BakingType]
         struct RequestPrevious : IRequestPreviousTransform { }
 
-        internal static void BakeCollider(Component authoring, IBaker baker)
+        enum Role
         {
-            var  search        = authoring.gameObject;
-            bool isEnvironment = false;
-            bool isKinematic   = false;
+            Undecided,
+            None,
+            Environment,
+            Kinematic,
+        }
+
+        static Role FindTaggedRole(GameObject colliderObject, IBaker baker)
+        {
+            var search = colliderObject;
             while (search != null)
             {
                 var tag = baker.GetComponentInParent<CollisionTagAuthoring>(search);
                 if (tag == null)
-                    break;
+                    return Role.Undecided;
 
-                if (tag.mode == Mode.IncludeEnvironmentSelfOnly)
+                bool isSelf = tag.gameObject == colliderObject;
+                switch (tag.mode)
                 {
-                    if (search == authoring.gameObject)
-                    {
-                        isEnvironment = true;
-                        break;
-                    }
-                }
-                else if (tag.mode == Mode.IncludeKinematicSelfOnly)
-                {
-                    if (search == authoring.gameObject)
-                    {
-                        isKinematic = true;
-                        break;
-                    }
-                }
-                else if (tag.mode == Mode.ExcludeSelfOnly)
-                {
-                    if (search == authoring.gameObject)
-                    {
-                        break;
-                    }
-                }
-                else if (tag.mode == Mode.IncludeEnvironmentRecursively)
-                {
-                    isEnvironment = true;
-                    break;
-                }
-                else if (tag.mode == Mode.IncludeKinematicRecursively)
-                {
-                    isKinematic = true;
-                    break;
+                    case Mode.IncludeEnvironmentRecursively:
+                        return Role.Environment;
+                    case Mode.IncludeKinematicRecursively:
+                        return Role.Kinematic;
+                    case Mode.ExcludeRecursively:
+                        return Role.None;
+                    case Mode.IncludeEnvironmentSelfOnly when isSelf:
+                        return Role.Environment;
+                    case Mode.IncludeKinematicSelfOnly when isSelf:
+                        return Role.Kinematic;
+                    case Mode.ExcludeSelfOnly when isSelf:
+                        return Role.None;
                 }
 
-                search = baker.GetParent(search);
+                search = baker.GetParent(tag.gameObject);
+            }
+            return Role.Undecided;
+        }
+
+        internal static void BakeCollider(Component authoring, IBaker baker, bool bakeUnityRigidbodies)
+        {
+            var  role        = FindTaggedRole(authoring.gameObject, baker);
+            bool isRigidBody = baker.GetComponent<AnnaRigidBodyAuthoring>() != null;
+
+            if (bakeUnityRigidbodies && role == Role.Undecided && !isRigidBody)
+            {
+                var rigidbody = baker.GetComponent<Rigidbody>();
+                if (rigidbody != null)
+                {
+                    if (rigidbody.isKinematic)
+                        role = Role.Kinematic;
+                    else
+                        isRigidBody = true;
+                }
             }
 
-            bool   isRigidBody = baker.GetComponent<AnnaRigidBodyAuthoring>() != null;
             Entity entity;
-            if (isEnvironment)
+            if (role == Role.Environment)
             {
                 entity = baker.GetEntity(TransformUsageFlags.Renderable);
                 baker.AddComponent<EnvironmentCollisionTag>(entity);
             }
-            else if (isKinematic)
+            else if (role == Role.Kinematic)
             {
                 entity = baker.GetEntity(TransformUsageFlags.Dynamic);
                 baker.AddComponent<KinematicCollisionTag>(entity);
@@ -91,7 +98,7 @@ namespace Latios.Anna.Authoring
                 }
             }
             else
-                entity = baker.GetEntity(TransformUsageFlags.Renderable);
+                return;
 
             if (!isRigidBody)
                 baker.AddComponent<CollisionWorldIndex>(entity);
@@ -106,15 +113,17 @@ namespace Latios.Anna.Authoring
             if (this.GetMultiColliderBakeMode(authoring, out _) == MultiColliderBakeMode.Ignore)
                 return;
 
-            CollisionTagAuthoring.BakeCollider(authoring, this);
+            CollisionTagAuthoring.BakeCollider(authoring, this, sEnableUnityRigidBodyBaking);
         }
+
+        internal static bool sEnableUnityRigidBodyBaking = false;
     }
 
     public class CollisionTagAuthoringCompoundBaker : Baker<ColliderAuthoring>
     {
         public override void Bake(ColliderAuthoring authoring)
         {
-            CollisionTagAuthoring.BakeCollider(authoring, this);
+            CollisionTagAuthoring.BakeCollider(authoring, this, CollisionTagAuthoringBaker.sEnableUnityRigidBodyBaking);
         }
     }
 }

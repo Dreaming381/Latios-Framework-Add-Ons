@@ -9,7 +9,7 @@ and Latios Framework.
 
 **Requirements:**
 
--   Requires Latios Framework 0.15.0 or newer
+-   Requires Latios Framework 0.16.1 or newer
 
 **Main Author(s):** [clandais](https://github.com/clandais)
 
@@ -21,7 +21,7 @@ Add the following to `LatiosBootstrap`:
 // In LatiosbakingBootstrap:
 Latios.Navigator.NavigatorBakingBootstrap.InstallNavigatorBakers(ref context);
 // In LatiosBootstrap:
-Latios.Navigator.NavigatorBoostrap.InstallNavigator(world);
+Latios.Navigator.NavigatorBootstrap.InstallNavigator(world);
 ```
 
 ## Usage
@@ -84,7 +84,7 @@ The pathfinding system will automatically compute a path (if any) in two steps:
 ### Retrieving the path
 
 Retrieving the path is done by querying the `DynamicBuffer<AgentPathPoint>` and
-the optional `AgentPath`. Example IJobEntity.Execute
+the optional `AgentPath`. Example IJobEach.Execute
 
 ```csharp
 void Execute(

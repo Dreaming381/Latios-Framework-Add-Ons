@@ -1,4 +1,4 @@
-# Latios Framework Add-Ons [0.8.5]
+# Latios Framework Add-Ons [0.9.0]
 
 This is an extra Unity package for the Latios Framework containing various
 add-on modules and functionality.
@@ -8,7 +8,8 @@ of the add-ons only support a single transform system or target platform. Some
 may be very niche to specific types of projects. Some may be experimental, or
 may suffer from fundamental design issues that may never be fixed. Some may
 require prerelease versions of the Latios Framework. Some may be abandoned by
-their primary author. And some may be absolutely perfect for your project.
+their primary author. Some may be completely vibe-coded. And some may be
+absolutely perfect for your project!
 
 Each add-on is disabled by default and must be enabled by a scripting define. If
 an add-on requires any assets, it must be imported through the add-on’s
@@ -42,6 +43,11 @@ how to contribute your own add-ons or improve existing add-ons.
 -   KAG50 (DreamingImLatios port) – An animation state machine and graph
     implementation that was originally written for Entities 0.50
 
+### Input
+
+-   Mash (DreamingImLatios) – Generates and populates ECS components from Input
+    System action assets, eliminating all the boilerplate
+
 ### Navigation
 
 -   FlowFields Navigation (Webheart) – A system-less flow fields solution with
@@ -52,21 +58,27 @@ how to contribute your own add-ons or improve existing add-ons.
 ### Physics
 
 -   Anna (DreamingImLatios) – A rigid body physics engine focused on ease-of-use
--   Shockwave (DreamingImLatios) – A unified API that other add-ons may use such
-    that they will be compatible with any physics engine supporting Shockwave
 
 ### Rendering and Visual Effects
 
 -   Cyline (DreamingImLatios port) – A simple 3D Line Renderer
+-   Peekaboo (DreamingImLatios) – CPU occlusion culling
+-   Ribbons (DreamingImLatios) – A recreation of Unity’s Line Renderer and Trail
+    Renderer into pure ECS
 -   Shuriken (DreamingImLatios) – A recreation of Unity’s particle system in
-    pure ECS (still under construction)
+    pure ECS
 -   Terrainy (TrustNoOneElse & DreamingImLatios) - A Unity terrain support for
     ECS runtime
 
 ### Tweening
 
 -   Smoothie (DreamingImLatios) – A data-driven entity-based tweening solution
-    with dynamic bindings (very experimental)
+    with dynamic bindings
+
+### Tooling
+
+-   Waitress (DreamingImLatios) – AI agent-friendly command-line tools for
+    working with complex assets such as Shader Graph and VFX Graph
 
 ## Special Thanks To These Awesome Contributors
 

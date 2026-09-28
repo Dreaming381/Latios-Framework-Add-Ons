@@ -1,10 +1,10 @@
 {
   "name": "com.latios.latiosframework.addons",
   "displayName": "Latios Framework Addons",
-  "version": "0.8.4",
-  "unity": "6000.0",
+  "version": "0.9.0",
+  "unity": "6000.3",
   "description": "A collection of Addons made for the Latios Framework.",
-  "unityRelease": "23f1",
+  "unityRelease": "8f1",
   "keywords": [
     "dots",
     "ecs",
@@ -19,7 +19,17 @@
     {
       "displayName": "Shader for Terrainy",
       "description": "Contains shaders for the Terrainy addon",
-      "path": "Samples/Terrainy"
+      "path": "Samples~/Terrainy"
+    },
+    {
+      "displayName": "ShaderWaitress Editor Bridge",
+      "description": "Editor scripts the ShaderWaitress command-line tool calls through the Unity CLI: exporting this project's Shader Graph node catalog, compiling graphs, and keeping an open Shader Graph window in step with the tool's edits. Registers its commands when the Pipeline package is installed.",
+      "path": "Samples~/ShaderWaitress Editor Bridge"
+    },
+    {
+      "displayName": "VfxWaitress Editor Bridge",
+      "description": "Editor scripts the VfxWaitress command-line tool calls through the Unity CLI: exporting this project's VFX Graph catalog, compiling and resyncing graphs, and keeping an open VFX Graph window in step with the tool's edits. Requires the Visual Effect Graph package, and registers its commands when the Pipeline package is installed.",
+      "path": "Samples~/VfxWaitress Editor Bridge"
     }
   ]
 }

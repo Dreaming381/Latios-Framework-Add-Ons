@@ -1,0 +1,27 @@
+{
+    "name": "Latios.Waitress.VfxGraph.Commands",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Pipeline",
+        "Unity.VisualEffectGraph.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "LATIOS_WAITRESS_PIPELINE"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.pipeline",
+            "expression": "0.0.0",
+            "define": "LATIOS_WAITRESS_PIPELINE"
+        }
+    ],
+    "noEngineReferences": false
+}

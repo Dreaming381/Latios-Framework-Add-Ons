@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] – 2026-9-27
+
+### Added
+
+-   Added optional baking support for built-in *RigidBody* and *Joint* types,
+    which when enabled turns of PhysX simulation when a subscene is open
+-   Added runtime `DynamicBuffer<JointConstraint>` which allows for configuring
+    joints between two entities which are fed into the solver automatically
+    every update
+
 ## [0.3.3] – 2026-7-25
 
 ### Improved

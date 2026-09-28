@@ -193,6 +193,66 @@ namespace Latios.Anna
                 UnitySim.SolveJacobian(ref rigidBodyA.velocity, in rigidBodyA.mass,
                                        ref bVelocity, bMass, in streamData.parameters, deltaTime, inverseDeltaTime);
             }
+            else if (pair.userByte == SolveByteCodes.rotationMotor)
+            {
+                ref var streamData = ref pair.GetRef<RotationMotorData>();
+                ref var rigidBodyA = ref statesSpan[streamData.indexA];
+                GetB(ref pair, streamData.indexB, out var dummyVelocity, out var bIndex, out _, out var bMass);
+                ref var bVelocity = ref bIndex >= 0 ? ref statesSpan[bIndex].velocity : ref dummyVelocity;
+                UnitySim.SolveJacobian(ref rigidBodyA.velocity, in rigidBodyA.mass, ref bVelocity, in bMass,
+                                       ref streamData.accumulatedImpulse, in streamData.parameters, deltaTime, inverseDeltaTime);
+            }
+            else if (pair.userByte == SolveByteCodes.angularVelocityMotor)
+            {
+                ref var streamData = ref pair.GetRef<AngularVelocityMotorData>();
+                ref var rigidBodyA = ref statesSpan[streamData.indexA];
+                GetB(ref pair, streamData.indexB, out var dummyVelocity, out var bIndex, out _, out var bMass);
+                ref var bVelocity = ref bIndex >= 0 ? ref statesSpan[bIndex].velocity : ref dummyVelocity;
+                UnitySim.SolveJacobian(ref rigidBodyA.velocity, in rigidBodyA.mass, ref bVelocity, in bMass,
+                                       ref streamData.accumulatedImpulse, in streamData.parameters, deltaTime, inverseDeltaTime);
+            }
+            else if (pair.userByte == SolveByteCodes.positionMotor)
+            {
+                ref var streamData = ref pair.GetRef<PositionMotorData>();
+                ref var rigidBodyA = ref statesSpan[streamData.indexA];
+                GetB(ref pair, streamData.indexB, out var dummyVelocity, out var bIndex, out var bTransform, out var bMass);
+                ref var bVelocity = ref bIndex >= 0 ? ref statesSpan[bIndex].velocity : ref dummyVelocity;
+                UnitySim.SolveJacobian(ref rigidBodyA.velocity, in rigidBodyA.inertialPoseWorldTransform, in rigidBodyA.mass,
+                                       ref bVelocity, in bTransform, in bMass,
+                                       ref streamData.accumulatedImpulse, in streamData.parameters, deltaTime, inverseDeltaTime);
+            }
+            else if (pair.userByte == SolveByteCodes.linearVelocityMotor)
+            {
+                ref var streamData = ref pair.GetRef<LinearVelocityMotorData>();
+                ref var rigidBodyA = ref statesSpan[streamData.indexA];
+                GetB(ref pair, streamData.indexB, out var dummyVelocity, out var bIndex, out var bTransform, out var bMass);
+                ref var bVelocity = ref bIndex >= 0 ? ref statesSpan[bIndex].velocity : ref dummyVelocity;
+                UnitySim.SolveJacobian(ref rigidBodyA.velocity, in rigidBodyA.inertialPoseWorldTransform, in rigidBodyA.mass,
+                                       ref bVelocity, in bTransform, in bMass,
+                                       ref streamData.accumulatedImpulse, in streamData.parameters, deltaTime, inverseDeltaTime);
+            }
+        }
+
+        // For B that isn't a rigid body, bIndex is -1 and velocity holds the kinematic's velocity, or zero for the world.
+        void GetB(ref PairStream.Pair pair, int indexB, out UnitySim.Velocity velocity, out int bIndex, out RigidTransform transform, out UnitySim.Mass mass)
+        {
+            velocity  = default;
+            transform = RigidTransform.identity;
+            mass      = default;
+            bIndex    = -1;
+            if (pair.bIsRW)
+            {
+                ref var rigidBodyB = ref states.AsSpan()[indexB];
+                transform          = rigidBodyB.inertialPoseWorldTransform;
+                mass               = rigidBodyB.mass;
+                bIndex             = indexB;
+            }
+            else if (indexB >= 0)
+            {
+                var kinematic = kinematics[indexB];
+                velocity      = kinematic.velocity;
+                transform     = kinematic.inertialPoseWorldTransform;
+            }
         }
     }
 }

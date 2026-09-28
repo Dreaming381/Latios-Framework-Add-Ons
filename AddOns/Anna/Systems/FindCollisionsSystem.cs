@@ -53,13 +53,20 @@ namespace Latios.Anna.Systems
                 rigidBodyQueryMask       = rigidBodyQueryMask,
                 kinematicQueryMask       = kinematicQueryMask
             }.Schedule(state.Dependency);
-            var jh = JobHandle.CombineDependencies(jhA, jhB);
+
+            var jointExclusionSet = new NativeHashSet<ulong>(64, state.WorldUpdateAllocator);
+            var jhC               = new BuildJointExclusionSetJob
+            {
+                jointExclusionSet = jointExclusionSet
+            }.Schedule(state.Dependency);
+            var jh = JobHandle.CombineDependencies(jhA, jhB, jhC);
 
             var processor = new Processor
             {
                 collisionWorld           = collisionWorld,
                 lookup                   = infoLookup,
                 exclusionSet             = exclusionSet,
+                jointExclusionSet        = jointExclusionSet,
                 archetypeClassifications = archetypeClassifications.AsDeferredJobArray(),
                 writer                   = constraintWriter.AsParallelWriter(),
             };
@@ -105,6 +112,28 @@ namespace Latios.Anna.Systems
             }
         }
 
+        static ulong EntityPairKey(Entity a, Entity b)
+        {
+            var low  = (uint)math.min(a.Index, b.Index);
+            var high = (uint)math.max(a.Index, b.Index);
+            return low | ((ulong)high << 32);
+        }
+
+        [BurstCompile]
+        partial struct BuildJointExclusionSetJob : IJobEntity
+        {
+            public NativeHashSet<ulong> jointExclusionSet;
+
+            public void Execute(in DynamicBuffer<JointConstraint> joints)
+            {
+                foreach (var joint in joints)
+                {
+                    if (!joint.enableCollision && joint.entityB != Entity.Null)
+                        jointExclusionSet.Add(EntityPairKey(joint.entityA, joint.entityB));
+                }
+            }
+        }
+
         [BurstCompile]
         struct BuildClassificationJob : IJob
         {
@@ -130,6 +159,7 @@ namespace Latios.Anna.Systems
             [ReadOnly] public CollisionWorld              collisionWorld;
             [ReadOnly] public ConstraintEntityInfoLookup  lookup;
             [ReadOnly] public NativeHashSet<uint>         exclusionSet;
+            [ReadOnly] public NativeHashSet<ulong>        jointExclusionSet;
             [ReadOnly] public NativeArray<Classification> archetypeClassifications;
 
             public ConstraintWriter.ParallelWriter writer;
@@ -142,6 +172,8 @@ namespace Latios.Anna.Systems
                 var archetypeIndexB = (uint)collisionWorld.archetypeIndices[result.bodyIndexB];
                 var key             = archetypeIndexA | (archetypeIndexB << 16);
                 if (exclusionSet.Contains(key))
+                    return;
+                if (jointExclusionSet.Contains(EntityPairKey(result.entityA, result.entityB)))
                     return;
 
                 var classificationB = archetypeClassifications[(int)archetypeIndexB];
