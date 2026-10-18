@@ -63,7 +63,14 @@ system set d5164 capacity=4096
 Verbs: `node add`, `block add <context>`, `wire <src>[.port] <dst>.<port>`,
 `unwire <dst>.<port>`, `set <node>.<port> <value>`, `set <node> <value>
 --setting <name>`, `link <ctxA> <ctxB>`, `rm <sel>`, `system set <d-id> k=v`,
-`echo`. The same verbs work one at a time as `vfxwaitress <verb> <vfx> ...`.
+`resource set k=v`, `echo`. The same verbs work one at a time as
+`vfxwaitress <verb> <vfx> ...`.
+
+`resource set` changes the asset-level settings on the `resource` line of
+`show`: `updateMode=FixedDeltaTime|DeltaTime|ExactFixedTime`,
+`ignoreTimeScale`, `culling=CullDefault|CullSimulation|CullNone`,
+`instancing=Auto|Disabled|Custom` with `instancingCapacity`, `initialEvent`, and
+`prewarmTime`/`prewarmSteps`/`prewarmDeltaTime`. Never edit these by reflection.
 
 `node add` and `block add` take `--wire Port=source[.Port]` for their inputs and
 `--feed [Port=]destination.Port` for their outputs. A new node is placed beside
@@ -84,6 +91,13 @@ graph, so only run it when the human wants that.
   real slots.
 - **A composite value goes on the whole slot**: `set $n.A 1,2,3`, never on a
   child like `A.x`.
+- **Curves and gradients take keys.** A curve is `time:value` pairs joined by
+  straight segments: `set $sol.Size 0:1,0.25:1.5,1:0`. A gradient is up to 8
+  `time:#RRGGBB[AA]` pairs with times 0 to 1: `set $col.Color
+  0:#ff8000,1:#3366ff00`. For smooth tangents or HDR colors, give VFX Graph's
+  own JSON (an existing graph's `m_SerializableObject`), single-quoted in a
+  script. Anything else is refused, because VFX Graph loads it as null and the
+  import crashes the Editor. A texture or mesh slot takes an asset path.
 - **`link` also merges two particle contexts into one system.** Always use it
   rather than writing the flow by hand.
 - **VFX Graph fails silently.** A graph that can't compile still imports and

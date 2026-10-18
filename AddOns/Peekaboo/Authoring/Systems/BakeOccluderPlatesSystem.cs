@@ -486,6 +486,9 @@ namespace Latios.Peekaboo.Authoring.Systems
                     plate.vertexStart += vertexCursor;
                     plates[plateCursor++] = plate;
                 }
+                // Copy rejects a destination index equal to the array length even when copying nothing.
+                if (entry.vertices.Length == 0)
+                    continue;
                 NativeArray<float3>.Copy(entry.vertices, 0, vertices, vertexCursor, entry.vertices.Length);
                 vertexCursor += entry.vertices.Length;
             }

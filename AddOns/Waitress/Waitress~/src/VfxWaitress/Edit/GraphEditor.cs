@@ -131,8 +131,13 @@ namespace VfxWaitress.Edit
 
             if (matches.Count > 0)
             {
-                // Among equals prefer the one that pins the fewest other settings.
-                var best = matches.OrderBy(m => m.VariantSettings.Count).First();
+                // Keep what the chosen name implies: "Set Lifetime" with Random=Uniform is still a
+                // lifetime block. Among equals prefer the one that pins the fewest other settings.
+                var best = matches
+                    .OrderByDescending(m => model.VariantSettings.Count(kv =>
+                        m.VariantSettings.TryGetValue(kv.Key, out var v) && string.Equals(v, kv.Value, StringComparison.OrdinalIgnoreCase)))
+                    .ThenBy(m => m.VariantSettings.Count)
+                    .First();
                 if (best != model)
                     Note($"using the '{best.Name}' variant, whose slots match those settings");
                 return best;
@@ -332,12 +337,32 @@ namespace VfxWaitress.Edit
                  (data.Owners.Count > 1 ? $" (shared by {data.Owners.Count} contexts)" : ""));
         }
 
+        /// <summary>The VisualEffectResource settings: update mode, culling, instancing, prewarm and initial event.</summary>
+        public void SetResource(IReadOnlyDictionary<string, string> values)
+        {
+            foreach (var line in ResourceSettings.Apply(Asset, values))
+                Note(line);
+        }
+
         /// <summary>
         /// Resolves an asset by path or name to the reference a .vfx stores. The main object's
         /// local file id is a per-importer constant, and a wrong guess silently resolves to
         /// nothing. Known kinds come from a table, and anything else is asked of the Editor.
         /// </summary>
         string AssetReference(string value, string settingName)
+        {
+            var (fileId, guid, type) = ResolveAsset(value, settingName);
+            return "{fileID: " + fileId + ", guid: " + guid + ", type: " + type + "}";
+        }
+
+        /// <summary>An object slot stores the reference as the JSON VFXSerializer writes for its ObjectWrapper.</summary>
+        string AssetReferenceJson(string value, string slotName)
+        {
+            var (fileId, guid, type) = ResolveAsset(value, slotName);
+            return "{\"obj\":{\"fileID\":" + fileId + ",\"guid\":\"" + guid + "\",\"type\":" + type + "}}";
+        }
+
+        (string fileId, string guid, string type) ResolveAsset(string value, string settingName)
         {
             var index = GuidIndex.For(Asset.Path);
             var guid = index.GuidOf(value, out var ambiguous);
@@ -348,7 +373,7 @@ namespace VfxWaitress.Edit
             var path = index.PathOf(guid);
             var fileId = GuidIndex.MainFileIdFor(path);
             if (fileId != 0)
-                return "{fileID: " + fileId.ToString(CultureInfo.InvariantCulture) + ", guid: " + guid + ", type: 3}";
+                return (fileId.ToString(CultureInfo.InvariantCulture), guid, "3");
 
             var resolved = EditorLink.Bridge.Require(path, "ResolveReference");
             if (!resolved.StartsWith("error", StringComparison.Ordinal))
@@ -357,7 +382,7 @@ namespace VfxWaitress.Edit
                 if (parts.Length == 3)
                 {
                     Note($"resolved {Path.GetFileName(path)} through the Editor");
-                    return "{fileID: " + parts[0] + ", guid: " + parts[1] + ", type: " + parts[2] + "}";
+                    return (parts[0].Trim(), parts[1].Trim(), parts[2].Trim());
                 }
             }
             throw new VfxWaitressException(
@@ -589,7 +614,10 @@ namespace VfxWaitress.Edit
             var master = slot.Doc.Body.Map("m_MasterData")?.Map("m_Value");
             if (master == null)
                 throw new VfxWaitressException($"{slot.Owner.ShortId}.{slot.Path} has no value storage");
-            master.SetScalar("m_SerializableObject", Encode(slot, value));
+            var stored = SlotValues.IsReference(slot.TypeName) && !value.TrimStart().StartsWith("{", StringComparison.Ordinal)
+                ? "'" + AssetReferenceJson(value, $"{slot.Owner.ShortId}.{slot.Path}") + "'"
+                : Encode(slot, value);
+            master.SetScalar("m_SerializableObject", stored);
             Note($"set {slot.Owner.ShortId}.{slot.Path} = {value}");
         }
 
@@ -602,12 +630,16 @@ namespace VfxWaitress.Edit
 
         /// <summary>
         /// Scalars serialize bare, and composites serialize as JSON quoted the way Unity quotes it.
-        /// Field names come from the slot's own children, so any type's shape works.
+        /// Field names come from the slot's own children, so any type's shape works. A leaf slot's
+        /// value is checked against its type, since a value VFX Graph can't load can crash the import.
         /// </summary>
         static string Encode(VfxSlot slot, string value)
         {
             if (slot.Children.Count == 0)
-                return value;
+            {
+                var text = SlotValues.Encode(slot.TypeName, value, $"{slot.Owner?.ShortId}.{slot.Path}");
+                return text.StartsWith("{", StringComparison.Ordinal) ? "'" + text.Replace("'", "''") + "'" : text;
+            }
             var parts = value.Split(',').Select(p => p.Trim()).ToList();
             var supplied = parts.Count;
             var json = EncodeComposite(slot, parts, out var consumed);
@@ -885,13 +917,25 @@ namespace VfxWaitress.Edit
                 sb.Append("  m_Infos:\n    m_RendererSettings:\n      motionVectorGenerationMode: 0\n      shadowCastingMode: 0\n");
                 sb.Append("      rayTracingMode: 0\n      receiveShadows: 0\n      reflectionProbeUsage: 0\n      lightProbeUsage: 0\n");
                 sb.Append("    m_CullingFlags: 3\n    m_UpdateMode: 0\n    m_PreWarmDeltaTime: 0.05\n    m_PreWarmStepCount: 0\n");
-                sb.Append("    m_InitialEventName: OnPlay\n    m_InstancingMode: -1\n    m_InstancingCapacity: 64\n");
+                sb.Append("    m_InitialEventName: OnPlay\n    m_InstancingMode: 0\n    m_InstancingCapacity: 64\n");
             }
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
+        /// <summary>
+        /// Refuses a graph holding a slot value VFX Graph can't load. Importing one can crash the
+        /// Editor, and a file under Assets/ is imported as soon as it's written.
+        /// </summary>
+        public void RequireLoadable()
+        {
+            var bad = Validator.UnloadableValues(Asset);
+            if (bad.Count > 0)
+                throw new VfxWaitressException("refusing to write a graph VFX Graph can't load:\n  " + string.Join("\n  ", bad.Select(f => f.Where + ": " + f.Message)));
+        }
+
         public void Save(string path = null)
         {
+            RequireLoadable();
             File.WriteAllText(path ?? Asset.Path, Asset.Yaml.Write(), new UTF8Encoding(false));
         }
     }

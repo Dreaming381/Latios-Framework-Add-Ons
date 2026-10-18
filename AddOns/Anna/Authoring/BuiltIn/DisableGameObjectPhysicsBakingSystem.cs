@@ -35,7 +35,7 @@ namespace Latios.Anna.Authoring.Systems
 
             Physics.simulationMode = SimulationMode.Script;
             Debug.Log(
-                "Anna switched Game Object physics to SimulationMode.Script because a subscene is open in play mode. It switches back when you exit play mode. To keep Game Object physics running, pass false for disableGameObjectPhysicsInPlayMode in AnnaBakingBootstrap.InstallAnnaBakers().");
+                "Anna switched Game Object physics to SimulationMode.Script because a subscene is open in play mode. It switches back when you exit play mode. To keep Game Object physics running, pass false for disableGameObjectPhysicsInPlayMode in AnnaBakingBootstrap.InstallUnityRigidBodyBakers().");
         }
 
         static void OnPlayModeStateChanged(PlayModeStateChange change)

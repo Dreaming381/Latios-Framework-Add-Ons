@@ -142,6 +142,7 @@ namespace ShaderWaitress.Model
                     Entry = entry,
                     SubTarget = Raw.Find(subId),
                     ShortId = m_ShortIds.Assign('t', id),
+                    Owned = OwnedBy(Raw, entry),
                 });
             }
 
@@ -178,6 +179,47 @@ namespace ShaderWaitress.Model
                 if (!string.IsNullOrEmpty(id))
                     yield return id;
             }
+        }
+
+        /// <summary>An entry followed by every object reachable from it through references.</summary>
+        public static List<MultiJsonEntry> OwnedBy(MultiJsonDocument raw, MultiJsonEntry entry)
+        {
+            var owned = new List<MultiJsonEntry>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var pending = new Stack<MultiJsonEntry>();
+            pending.Push(entry);
+            while (pending.Count > 0)
+            {
+                var next = pending.Pop();
+                if (next == null || !seen.Add(next.ObjectId))
+                    continue;
+                owned.Add(next);
+                foreach (var id in UnityJsonWriter.RefIds(next.Node).Reverse())
+                    pending.Push(raw.Find(id));
+            }
+            return owned;
+        }
+
+        /// <summary>
+        /// A target by short id, object id, or pipeline name: "universal", "hd" (or "hdrp"),
+        /// "universal/lit".
+        /// </summary>
+        public SgTarget ResolveTarget(string handle)
+        {
+            if (string.IsNullOrWhiteSpace(handle))
+                throw new ShaderWaitressException("empty target reference");
+            var objectId = m_ShortIds.ObjectFor(handle) ?? handle;
+            var byId = m_Targets.FirstOrDefault(t => t.ObjectId == objectId);
+            if (byId != null)
+                return byId;
+            var name = TargetNames.Normalize(handle);
+            var matches = m_Targets.Where(t => TargetNames.Matches(t, name)).ToList();
+            if (matches.Count == 1)
+                return matches[0];
+            var known = string.Join(", ", m_Targets.Select(t => $"{t.ShortId} {t.Label}"));
+            throw new ShaderWaitressException(matches.Count == 0
+                ? $"no target '{handle}'. This graph has: {(known.Length == 0 ? "none" : known)}"
+                : $"'{handle}' matches more than one target: {known}");
         }
 
         public IReadOnlyList<string> ContextBlocks(bool vertex)

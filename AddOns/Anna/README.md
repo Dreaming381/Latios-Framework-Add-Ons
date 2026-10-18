@@ -51,7 +51,7 @@ If you want Anna to bake Unity’s built-in physics components, add the followin
 to `LatiosBakingBootstrap`:
 
 ```csharp
-Latios.Anna.Authoring.AnnaBakingBootstrap.InstallAnnaBakers(ref context);
+Latios.Anna.Authoring.AnnaBakingBootstrap.InstallUnityRigidBodyBakers(ref context);
 ```
 
 ### Basic Usage
@@ -74,7 +74,7 @@ overthink it).
 
 ### Baking Unity’s Physics Components
 
-With `InstallAnnaBakers()` in your baking bootstrap, you can use built-in
+With `InstallUnityRigidBodyBakers()` in your baking bootstrap, you can use built-in
 components to author physics:
 
 -   A `Rigidbody` becomes an Anna rigid body. Mass, gravity, frozen axes, and

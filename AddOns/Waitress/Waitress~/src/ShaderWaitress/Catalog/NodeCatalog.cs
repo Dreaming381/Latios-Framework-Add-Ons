@@ -195,7 +195,7 @@ namespace ShaderWaitress.Catalog
         {
             if (string.IsNullOrWhiteSpace(name))
                 return null;
-            name = name.Trim().ToLowerInvariant().Replace('\\', '/');
+            name = TargetNames.Normalize(name);
             var exact = m_Starters.FirstOrDefault(s => s.Name == name);
             if (exact != null)
                 return exact;

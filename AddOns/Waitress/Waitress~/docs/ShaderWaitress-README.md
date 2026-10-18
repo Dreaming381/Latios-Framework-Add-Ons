@@ -175,6 +175,9 @@ of these was checked against the compiled shader:
 -   A `--default normal-map` texture property defaults to `bump`.
 -   `target set surface=transparent --sync-blocks` gives a working transparent
     shader with the extra Alpha blocks.
+-   A graph given an HDRP target with `target add --from` still imports and
+    compiles in a URP project, and the HDRP target survives Shader Graph's own
+    save unchanged.
 
 ## Source Layout
 

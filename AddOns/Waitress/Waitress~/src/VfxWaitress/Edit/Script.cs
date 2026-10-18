@@ -121,6 +121,14 @@ namespace VfxWaitress.Edit
                     break;
                 }
 
+                case "resource":
+                {
+                    if (rest.Count == 0 || rest[0] != "set")
+                        throw new VfxWaitressException($"unknown 'resource' subcommand '{rest.FirstOrDefault()}'; use 'resource set'");
+                    editor.SetResource(KeyValues(rest.Skip(1)));
+                    break;
+                }
+
                 case "echo":
                     output.WriteLine(string.Join(" ", rest));
                     break;

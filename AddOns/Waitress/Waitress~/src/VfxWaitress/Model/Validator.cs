@@ -109,6 +109,36 @@ namespace VfxWaitress.Model
                 }
             }
 
+            // A flow link is recorded on both contexts. VFX Graph loads a one-sided link without
+            // complaint and keeps it on save.
+            foreach (var node in asset.AllNodes())
+            {
+                foreach (var flow in node.FlowOut)
+                {
+                    if (asset.Nodes.TryGetValue(flow.toContext, out var target) && !target.FlowIn.Contains((flow.toIndex, node.FileId, flow.from)))
+                    {
+                        findings.Add(new Finding
+                        {
+                            Severity = "error",
+                            Where = node.ShortId,
+                            Message = $"flows into {target.ShortId}, which doesn't record the link on its input; relink with `link`",
+                        });
+                    }
+                }
+                foreach (var flow in node.FlowIn)
+                {
+                    if (asset.Nodes.TryGetValue(flow.fromContext, out var source) && !source.FlowOut.Contains((flow.fromIndex, node.FileId, flow.to)))
+                    {
+                        findings.Add(new Finding
+                        {
+                            Severity = "error",
+                            Where = node.ShortId,
+                            Message = $"records a flow link from {source.ShortId}, which doesn't record it on its output; relink with `link`",
+                        });
+                    }
+                }
+            }
+
             // Two particle contexts joined by a flow link are one system and must share their
             // VFXData. Flow edges crossing between systems is a shape the Editor never writes.
             foreach (var node in asset.AllNodes())
@@ -191,6 +221,42 @@ namespace VfxWaitress.Model
             foreach (var warning in asset.Warnings.Where(w => w.StartsWith("dangling", StringComparison.Ordinal)).Distinct())
                 findings.Add(new Finding { Severity = "error", Where = "graph", Message = warning });
 
+            findings.AddRange(UnloadableValues(asset));
+            return findings;
+        }
+
+        /// <summary>
+        /// Leaf slot values VFX Graph can't parse for the slot's type. Each loads as null, and a null
+        /// curve or gradient crashes the Editor natively when the asset is imported. The others
+        /// silently lose the value, which is still never what was asked for.
+        /// </summary>
+        public static List<Finding> UnloadableValues(VfxAsset asset)
+        {
+            var findings = new List<Finding>();
+            foreach (var node in asset.AllNodes())
+            {
+                foreach (var slot in node.AllInputSlots.Concat(node.AllOutputSlots))
+                {
+                    if (slot.Parent != null || slot.Children.Count > 0)
+                        continue;
+                    // An operator's output value is never read; a parameter's is its value.
+                    if (!slot.IsInput && node.ExposedName == null)
+                        continue;
+                    var stored = slot.Doc.Body.Map("m_MasterData")?.Map("m_Value")?.Scalar("m_SerializableObject");
+                    if (stored == null)
+                        continue;
+                    var problem = SlotValues.Problem(slot.TypeName, stored);
+                    if (problem == null)
+                        continue;
+                    findings.Add(new Finding
+                    {
+                        Severity = "error",
+                        Where = $"{node.ShortId}.{slot.Path}",
+                        Message = $"value {problem}. VFX Graph loads it as null" +
+                                  (SlotValues.NullCrashes(slot.TypeName) ? ", which crashes the Editor when the asset is imported" : " and only logs it"),
+                    });
+                }
+            }
             return findings;
         }
     }

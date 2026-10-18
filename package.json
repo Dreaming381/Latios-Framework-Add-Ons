@@ -1,7 +1,7 @@
 {
   "name": "com.latios.latiosframework.addons",
   "displayName": "Latios Framework Addons",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "unity": "6000.3",
   "description": "A collection of Addons made for the Latios Framework.",
   "unityRelease": "8f1",

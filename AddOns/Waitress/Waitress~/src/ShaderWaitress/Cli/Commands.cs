@@ -543,7 +543,7 @@ namespace ShaderWaitress.Cli
         public static int Target(IReadOnlyList<string> argv, TextWriter output)
         {
             if (argv.Count == 0)
-                throw new ShaderWaitressException("usage: shaderwaitress target <show|set> <graph> [key=value]...");
+                throw new ShaderWaitressException("usage: shaderwaitress target <show|set|add|rm> <graph> ...");
             var sub = argv[0].ToLowerInvariant();
             var args = Args.Parse(argv.Skip(1).ToList(), "sync-blocks");
             var doc = Open(args, out var rest, forEdit: sub != "show");
@@ -552,18 +552,32 @@ namespace ShaderWaitress.Cli
             switch (sub)
             {
                 case "show":
+                {
+                    var raw = args.Flag("raw");
                     args.RejectUnknown();
                     foreach (var target in doc.Targets)
                     {
-                        output.WriteLine($"{target.ShortId} {target.TypeLabel}/{target.SubTargetLabel}");
+                        output.WriteLine($"{target.ShortId} {target.Label}");
                         foreach (var line in TargetSettings.Describe(target))
                             output.WriteLine("  " + line);
+                        if (!raw)
+                            continue;
+                        foreach (var (owner, fields) in TargetSettings.DescribeRaw(target))
+                            output.WriteLine($"  [{owner}] " + (fields.Count == 0 ? "(no fields)" : string.Join(" ", fields)));
                     }
                     if (doc.Targets.Count == 0)
                         output.WriteLine("# no targets");
                     return 0;
+                }
                 case "set":
                     Ops.TargetSet(doc, editor, args, rest);
+                    return Finish(doc, args, editor, output, structural: false);
+                case "add":
+                    Ops.TargetAdd(doc, editor, args, rest);
+                    return Finish(doc, args, editor, output, structural: false);
+                case "rm":
+                case "remove":
+                    Ops.TargetRm(doc, editor, rest);
                     return Finish(doc, args, editor, output, structural: false);
                 default:
                     throw new ShaderWaitressException($"unknown 'target' subcommand '{sub}'");

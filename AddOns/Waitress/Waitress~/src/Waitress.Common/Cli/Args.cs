@@ -64,7 +64,7 @@ namespace Waitress.Cli
                     else if (!switches.Contains(name))
                     {
                         if (i + 1 >= argv.Count)
-                            throw new WaitressException($"option --{name} requires a value");
+                            throw new WaitressException($"option --{name} requires a value, or is not an option of this command (see help)");
                         value = argv[++i];
                     }
                     args.AddOption(name, value ?? "true");
@@ -152,6 +152,13 @@ namespace Waitress.Cli
             if (m_Positional.Count <= index)
                 throw new WaitressException($"missing {what}");
             return m_Positional[index];
+        }
+
+        /// <summary>Fails when more positional arguments were given than the command takes.</summary>
+        public void RejectExtraPositionals(int allowed)
+        {
+            if (m_Positional.Count > allowed)
+                throw new WaitressException("unexpected argument(s): " + string.Join(" ", m_Positional.Skip(allowed)));
         }
 
         /// <summary>Fails on options the command never looked at, so typos are not silent.</summary>

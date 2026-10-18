@@ -68,7 +68,7 @@ feed, level with the port they feed. Nothing that was already there moves.
 ```
 $ vfxwaitress show Assets/Validation/LifeFX/LifeFXSpawnEvents.vfx   # 2511 lines of YAML
 graph "LifeFXSpawnEvents" kind=vfx contexts=4 blocks=6 operators=3 params=3 edges=6
-resource initialEvent=OnPlay updateMode=0 culling=3 instancing=64
+resource initialEvent=OnPlay updateMode=FixedDeltaTime culling=CullDefault instancing=Auto
 
 param p5138 in  GraphicsBuffer "SpawnBuffer" exposed
 param p5140 in  Int32 "SpawnStart" =0 exposed

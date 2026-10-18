@@ -184,6 +184,18 @@ points worth knowing:
     sub-graph's own guid.
 -   `--sync-blocks` only ever adds blocks. Deciding a block is extra would need
     the target's active block list, and only the Editor can produce that.
+-   A target's settings are spread over the target, its sub-target and, on
+    HDRP, data objects the target references (SystemData, LightingData,
+    BuiltinData, ...). A friendly key names the object type that holds it on
+    each pipeline, and writes only there; a raw field is looked up across all
+    of them. A key with nowhere to go is refused, because a field written onto
+    the wrong object is silently ignored by Unity.
+-   `target add` copies a target and everything it references under fresh ids.
+    A pipeline that is not installed has no starter in this project's catalog,
+    so the source can be another project's catalog or another graph. Shader
+    Graph keeps a target whose type it cannot load as an unknown target and
+    writes it back verbatim, which is what makes a URP+HDRP graph editable in a
+    project that has only one of them.
 -   A new slot is written with only the fields that differ from the slot class's
     defaults. Shader Graph loads slots with `FromJsonOverwrite` onto a
     default-constructed slot, so missing fields keep their code defaults.

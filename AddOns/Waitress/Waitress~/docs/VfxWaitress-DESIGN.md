@@ -115,7 +115,7 @@ inline and no coordinates or slot objects.
 
 ```
 graph "LifeFXTrackedTransforms" kind=vfx contexts=4 blocks=7 operators=6 params=4 edges=11
-resource initialEvent=OnPlay updateMode=0 culling=3 instancing=64
+resource initialEvent=OnPlay updateMode=FixedDeltaTime culling=CullDefault instancing=Auto
 attr TransformIndex int "LifeFX tracked transform buffer index"
 
 param p4985 in  GraphicsBuffer "TransformBuffer" exposed

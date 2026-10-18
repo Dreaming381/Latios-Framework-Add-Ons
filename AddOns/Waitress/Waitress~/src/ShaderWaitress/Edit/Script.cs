@@ -229,10 +229,22 @@ namespace ShaderWaitress.Edit
 
                 case "target":
                 {
-                    if (sub != "set")
-                        throw new ShaderWaitressException("only 'target set' is available in a script");
                     var args = Args.Parse(argv.Skip(2).ToList(), "sync-blocks");
-                    Ops.TargetSet(doc, editor, args, args.Positional);
+                    switch (sub)
+                    {
+                        case "set":
+                            Ops.TargetSet(doc, editor, args, args.Positional);
+                            break;
+                        case "add":
+                            Ops.TargetAdd(doc, editor, args, args.Positional);
+                            break;
+                        case "rm":
+                        case "remove":
+                            Ops.TargetRm(doc, editor, args.Positional);
+                            break;
+                        default:
+                            throw new ShaderWaitressException("only 'target set', 'target add' and 'target rm' are available in a script");
+                    }
                     args.RejectUnknown();
                     return;
                 }

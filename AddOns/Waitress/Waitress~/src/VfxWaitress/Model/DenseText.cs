@@ -85,13 +85,8 @@ namespace VfxWaitress.Model
             if (infos == null)
                 return;
             sb.Append("resource");
-            Append(sb, "initialEvent", infos.Scalar("m_InitialEventName"));
-            Append(sb, "updateMode", infos.Scalar("m_UpdateMode"));
-            Append(sb, "culling", infos.Scalar("m_CullingFlags"));
-            Append(sb, "instancing", infos.Scalar("m_InstancingCapacity"));
-            var prewarm = infos.Scalar("m_PreWarmStepCount");
-            if (prewarm != null && prewarm != "0")
-                Append(sb, "prewarmSteps", prewarm);
+            foreach (var setting in ResourceSettings.Describe(infos))
+                sb.Append(' ').Append(setting);
             sb.AppendLine();
         }
 
@@ -351,6 +346,8 @@ namespace VfxWaitress.Model
 
         static string ReferenceLabel(string flow)
         {
+            // An object slot holds the reference as JSON, with its keys quoted.
+            flow = flow.Replace("\"", "");
             var guid = Serialization.UnityYaml.GuidIn(flow);
             if (guid != null)
             {

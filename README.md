@@ -1,4 +1,4 @@
-# Latios Framework Add-Ons [0.9.0]
+# Latios Framework Add-Ons [0.9.1]
 
 This is an extra Unity package for the Latios Framework containing various
 add-on modules and functionality.
@@ -78,7 +78,7 @@ how to contribute your own add-ons or improve existing add-ons.
 ### Tooling
 
 -   Waitress (DreamingImLatios) – AI agent-friendly command-line tools for
-    working with complex assets such as Shader Graph and VFX Graph
+    Unity’s graphs, profiler captures, assets, and builds
 
 ## Special Thanks To These Awesome Contributors
 

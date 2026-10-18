@@ -90,14 +90,22 @@ namespace VfxWaitress.Testing
             yield return ("apply/unbound-label", true, UnboundLabelIsNamed);
             yield return ("apply/editor-verbs-refused", true, EditorVerbsAreRefusedInScripts);
             yield return ("link/merges-systems", true, LinkMergesSystems);
+            yield return ("link/fan-out", true, FlowLinksFanOut);
             yield return ("wire/both-ends", true, WiringWritesBothEnds);
             yield return ("set/composite", true, CompositeValuesFillTheTree);
+            yield return ("set/leaf-values-checked", true, LeafValuesAreChecked);
+            yield return ("set/curve-forms", true, CurveValuesAreEncodedOrRefused);
+            yield return ("set/gradient-forms", true, GradientValuesAreEncodedOrRefused);
+            yield return ("write/unloadable-value-refused", true, UnloadableValuesAreNeverWritten);
             yield return ("variant/selects-template", true, SettingsSelectTheVariant);
+            yield return ("variant/keeps-menu-name", true, MenuNameSurvivesASetting);
             yield return ("rm/cleans-links", true, RemovingANodeCleansItsLinks);
             yield return ("ids/new-ids-dont-collide", true, NewIdsDoNotCollide);
             yield return ("place/beside-consumer", true, NewNodesLandBesideWhatTheyFeed);
             yield return ("place/flow-column", true, NewContextsStackByFlow);
             yield return ("system/set", true, SystemSettingsLandOnTheData);
+            yield return ("resource/set", false, ResourceSettingsAreStored);
+            yield return ("resource/automatic-bounds", true, AutomaticBoundsKeepCullingOff);
         }
 
         // ---- helpers ----
@@ -280,6 +288,29 @@ namespace VfxWaitress.Testing
             Equal(1, particle.Count, "systems shared by initialize, update and output");
         }
 
+        /// <summary>A second link from one flow output adds to the first rather than replacing it.</summary>
+        static void FlowLinksFanOut()
+        {
+            var path = NewGraph("fanout");
+            Sh("apply", path, Script("fanout",
+                                     "node add Spawn --as spawn",
+                                     "node add \"Initialize Particle\" --as init",
+                                     "node add \"Output Event\" --as tick",
+                                     "link $spawn $init",
+                                     "link $spawn $tick"));
+            var asset = VfxAsset.Load(path);
+            var spawn = Only(asset, n => n.DisplayType == "VFXBasicSpawner", "spawner");
+            Equal(2, spawn.FlowOut.Count, "flow links out of the spawner");
+            foreach (var flow in spawn.FlowOut)
+                Check(asset.Nodes[flow.toContext].FlowIn.Contains((flow.toIndex, spawn.FileId, flow.from)), "the target records the link too");
+            Check(Model.Validator.Check(asset).All(f => f.Severity != "error"), "validate finds no error");
+
+            var init = Only(asset, n => n.DisplayType == "VFXBasicInitialize", "initialize");
+            init.Doc.Body.SetBlock("m_InputFlowSlot", "  - link: []\n");
+            new Edit.GraphEditor(asset).Save();
+            Check(Model.Validator.Check(VfxAsset.Load(path)).Any(f => f.Severity == "error" && f.Where == spawn.ShortId), "validate flags a one-sided flow link");
+        }
+
         /// <summary>VFX Graph stores each link on both slots. One end alone is a broken graph.</summary>
         static void WiringWritesBothEnds()
         {
@@ -305,6 +336,146 @@ namespace VfxWaitress.Testing
             Check(Sh("show", path).Contains("_Color=(1,0.5,0)", StringComparison.Ordinal), "the value shows on the master slot");
             var message = Fails("set", path, block.ShortId + "._Color.x", "1");
             Check(message.Contains("child slot", StringComparison.Ordinal), "setting a child is refused: " + message);
+        }
+
+        static string SlotValue(string path, string shortId, string slotPath)
+        {
+            var slot = VfxAsset.Load(path).AllNodes().First(n => n.ShortId == shortId).AllInputSlots.First(s => s.Path == slotPath);
+            return slot.Doc.Body.Map("m_MasterData").Map("m_Value").Scalar("m_SerializableObject");
+        }
+
+        /// <summary>VFX Graph parses a leaf value by the slot's type, and anything it can't parse loads as null.</summary>
+        static void LeafValuesAreChecked()
+        {
+            var path = BuildSystem("leaf");
+            var rate = Only(VfxAsset.Load(path), n => n.Kind == "block" && n.AllInputSlots.Any(s => s.Path == "Rate"), "Constant Spawn Rate");
+            var before = File.ReadAllText(path);
+            var message = Fails("set", path, rate.ShortId + ".Rate", "fast");
+            Check(message.Contains("takes a number", StringComparison.Ordinal) || message.Contains("is not a number", StringComparison.Ordinal),
+                "a word on a float is refused: " + message);
+            Equal(before, File.ReadAllText(path), "the file after a refused value");
+            Sh("set", path, rate.ShortId + ".Rate", "32");
+            Equal("32", SlotValue(path, rate.ShortId, "Rate"), "a number is stored bare");
+
+            var flag = Only(VfxAsset.Load(path), n => n.Kind == "block" && n.DisplayType == "SetAttribute", "Set Color");
+            var activation = flag.AllInputSlots.FirstOrDefault(s => s.TypeName == "Boolean" && s.Parent == null && s.LinkedSlotIds.Count == 0);
+            if (activation != null)
+            {
+                Sh("set", path, flag.ShortId + "." + activation.Path, "1");
+                Equal("True", SlotValue(path, flag.ShortId, activation.Path), "a bool is stored the way Convert.ToBoolean reads it");
+            }
+        }
+
+        const string k_Curve = "{\"frames\":[{\"time\":0.0,\"value\":1.0,\"inTangent\":0.0,\"outTangent\":-1.0,\"tangentMode\":0,\"leftTangentMode\":0,\"rightTangentMode\":0,\"broken\":false}," +
+                               "{\"time\":1.0,\"value\":0.0,\"inTangent\":-1.0,\"outTangent\":0.0,\"tangentMode\":0,\"leftTangentMode\":0,\"rightTangentMode\":0,\"broken\":false}]," +
+                               "\"preWrapMode\":8,\"postWrapMode\":8,\"version\":1}";
+
+        static string AddSizeOverLife(string path)
+        {
+            var update = Only(VfxAsset.Load(path), n => n.DisplayType == "VFXBasicUpdate", "update");
+            return AddedId(Sh("block", "add", path, update.ShortId, "Multiply Size Over Life"));
+        }
+
+        static string AddedId(string log)
+        {
+            var line = log.Split('\n').First(l => l.StartsWith("added ", StringComparison.Ordinal));
+            var rest = line.Substring(line.IndexOf(" as ", StringComparison.Ordinal) + 4).Trim();
+            return rest.Split(' ')[0];
+        }
+
+        /// <summary>
+        /// A curve slot has no child slots, so it looks like a scalar. Text that isn't VFX Graph's
+        /// curve JSON loads as a null curve, and importing that crashed the Editor. So the short
+        /// form is encoded, and anything else is refused.
+        /// </summary>
+        static void CurveValuesAreEncodedOrRefused()
+        {
+            var path = BuildSystem("curve");
+            var sol = AddSizeOverLife(path);
+            var slot = VfxAsset.Load(path).AllNodes().First(n => n.ShortId == sol).AllInputSlots.First(s => s.TypeName == "AnimationCurve");
+            var before = File.ReadAllText(path);
+            var message = Fails("set", path, sol + "." + slot.Path, "fast");
+            Check(message.Contains("is not a key", StringComparison.Ordinal), "a word is refused: " + message);
+            message = Fails("apply", path, Script("curve", $"set {sol}.{slot.Path} 0:1,1:x"), "--dry-run");
+            Check(message.Contains("is not a key", StringComparison.Ordinal), "and refused by a dry run too: " + message);
+            message = Fails("set", path, sol + "." + slot.Path, "0:1,0:2");
+            Check(message.Contains("two keys at time", StringComparison.Ordinal), "keys sharing a time are refused: " + message);
+            message = Fails("set", path, sol + "." + slot.Path, "{\"keys\":[]}");
+            Check(message.Contains("\"frames\"", StringComparison.Ordinal), "JSON of the wrong shape is refused: " + message);
+            Equal(before, File.ReadAllText(path), "the file after refused curves");
+
+            Sh("set", path, sol + "." + slot.Path, k_Curve);
+            Equal("'" + k_Curve + "'", SlotValue(path, sol, slot.Path), "curve JSON is stored quoted, like VFX Graph writes it");
+            Check(Sh("show", path).Contains("curve(2)", StringComparison.Ordinal), "and shows as a two-key curve");
+            Equal(0, Validator.Check(VfxAsset.Load(path)).Count(f => f.Severity == "error"), "errors after a valid curve");
+
+            Sh("set", path, sol + "." + slot.Path, "1:0, 0:1, 0.5:2");
+            Equal("'{\"frames\":[" +
+                  "{\"time\":0.0,\"value\":1.0,\"inTangent\":2.0,\"outTangent\":2.0,\"tangentMode\":0,\"leftTangentMode\":2,\"rightTangentMode\":2,\"broken\":true}," +
+                  "{\"time\":0.5,\"value\":2.0,\"inTangent\":2.0,\"outTangent\":-4.0,\"tangentMode\":0,\"leftTangentMode\":2,\"rightTangentMode\":2,\"broken\":true}," +
+                  "{\"time\":1.0,\"value\":0.0,\"inTangent\":-4.0,\"outTangent\":-4.0,\"tangentMode\":0,\"leftTangentMode\":2,\"rightTangentMode\":2,\"broken\":true}]," +
+                  "\"preWrapMode\":8,\"postWrapMode\":8,\"version\":1}'",
+                SlotValue(path, sol, slot.Path), "time:value keys sorted, with Linear tangents");
+            Equal(0, Validator.Check(VfxAsset.Load(path)).Count(f => f.Severity == "error"), "errors after a short-form curve");
+        }
+
+        static void GradientValuesAreEncodedOrRefused()
+        {
+            var path = BuildSystem("gradient");
+            var update = Only(VfxAsset.Load(path), n => n.DisplayType == "VFXBasicUpdate", "update");
+            var col = AddedId(Sh("block", "add", path, update.ShortId, "Set Color Over Life"));
+            var slot = VfxAsset.Load(path).AllNodes().First(n => n.ShortId == col).AllInputSlots.First(s => s.TypeName == "Gradient");
+            var target = col + "." + slot.Path;
+            var before = File.ReadAllText(path);
+            var message = Fails("set", path, target, "0:#ff80,1:#000000");
+            Check(message.Contains("is not a key", StringComparison.Ordinal), "a short hex color is refused: " + message);
+            message = Fails("set", path, target, "0:#ffffff,1.5:#000000");
+            Check(message.Contains("from 0 to 1", StringComparison.Ordinal), "a time past 1 is refused: " + message);
+            message = Fails("set", path, target, string.Join(",", Enumerable.Range(0, 9).Select(i => $"{i / 8.0}:#ffffff")));
+            Check(message.Contains("at most 8", StringComparison.Ordinal), "a ninth key is refused: " + message);
+            Equal(before, File.ReadAllText(path), "the file after refused gradients");
+
+            Sh("set", path, target, "0:#ff8000,1:#0000ff00");
+            Equal("'{\"colorKeys\":[" +
+                  "{\"color\":{\"r\":1.0,\"g\":" + (128 / 255.0).ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ",\"b\":0.0,\"a\":1.0},\"time\":0.0}," +
+                  "{\"color\":{\"r\":0.0,\"g\":0.0,\"b\":1.0,\"a\":1.0},\"time\":1.0}]," +
+                  "\"alphaKeys\":[{\"alpha\":1.0,\"time\":0.0},{\"alpha\":0.0,\"time\":1.0}],\"gradientMode\":0}'",
+                SlotValue(path, col, slot.Path), "hex keys with their alpha");
+            Check(Sh("show", path).Contains("gradient(2)", StringComparison.Ordinal), "and shows as a two-key gradient");
+            Equal(0, Validator.Check(VfxAsset.Load(path)).Count(f => f.Severity == "error"), "errors after a short-form gradient");
+        }
+
+        /// <summary>A file holding an unloadable value is reported, and no command writes one.</summary>
+        static void UnloadableValuesAreNeverWritten()
+        {
+            var path = BuildSystem("unloadable");
+            var sol = AddSizeOverLife(path);
+            var slot = VfxAsset.Load(path).AllNodes().First(n => n.ShortId == sol).AllInputSlots.First(s => s.TypeName == "AnimationCurve");
+            var good = SlotValue(path, sol, slot.Path);
+            File.WriteAllText(path, File.ReadAllText(path).Replace("m_SerializableObject: " + good, "m_SerializableObject: 0:1,1:0"));
+            var corrupt = File.ReadAllText(path);
+            Check(corrupt.Contains("m_SerializableObject: 0:1,1:0", StringComparison.Ordinal), "the corruption was planted");
+
+            var findings = Validator.Check(VfxAsset.Load(path)).Where(f => f.Severity == "error").ToList();
+            Check(findings.Any(f => f.Where == sol + "." + slot.Path), "validate names the slot: " + string.Join("; ", findings));
+            var message = Fails("node", "add", path, "Add");
+            Check(message.Contains("can't load", StringComparison.Ordinal), "an unrelated edit refuses to write it: " + message);
+            Equal(corrupt, File.ReadAllText(path), "the file after the refused write");
+            Sh("set", path, sol + "." + slot.Path, k_Curve);
+            Equal(0, Validator.Check(VfxAsset.Load(path)).Count(f => f.Severity == "error"), "errors once the curve is set properly");
+        }
+
+        /// <summary>A menu name implies settings; adding another setting keeps them.</summary>
+        static void MenuNameSurvivesASetting()
+        {
+            var path = BuildSystem("menuname");
+            var init = Only(VfxAsset.Load(path), n => n.DisplayType == "VFXBasicInitialize", "initialize");
+            var log = Sh("block", "add", path, init.ShortId, "Set Lifetime", "Random=Uniform");
+            var id = AddedId(log);
+            var block = VfxAsset.Load(path).AllNodes().First(n => n.ShortId == id);
+            Equal("lifetime", block.Doc.Body.Scalar("attribute"), "the attribute named by 'Set Lifetime'");
+            Check(block.AllInputSlots.Any(s => s.Path == "A") && block.AllInputSlots.Any(s => s.Path == "B"), "the uniform-random A/B slots");
+            Check(block.AllInputSlots.Where(s => s.Parent == null).All(s => s.TypeName != "Vector3"), "no Vector3 slot from the old position variant");
         }
 
         /// <summary>A setting that decides the slots picks the variant with those slots, or is refused.</summary>
@@ -397,6 +568,64 @@ namespace VfxWaitress.Testing
             var init = Only(VfxAsset.Load(path), n => n.DisplayType == "VFXBasicInitialize", "initialize");
             Sh("system", "set", path, init.Data.ShortId, "capacity=4096");
             Check(Sh("show", path).Contains("capacity=4096", StringComparison.Ordinal), "the system shows its new capacity");
+        }
+
+        static string Infos(string path, string key) => VfxAsset.Load(path).ResourceDoc.Body.Map("m_Infos").Scalar(key);
+
+        static void ResourceSettingsAreStored()
+        {
+            var path = NewGraph("resource");
+            Check(Sh("show", path).Contains("resource initialEvent=OnPlay updateMode=FixedDeltaTime culling=CullDefault instancing=Auto" + Environment.NewLine, StringComparison.Ordinal),
+                  "a new graph shows Unity's template defaults");
+
+            Sh("resource", "set", path, "updateMode=DeltaTime", "ignoreTimeScale=true");
+            Equal("3", Infos(path, "m_UpdateMode"), "DeltaTime | IgnoreTimeScale");
+            Sh("resource", "set", path, "updateMode=ExactFixedTime");
+            Equal("6", Infos(path, "m_UpdateMode"), "a new time step keeps IgnoreTimeScale");
+            Sh("resource", "set", path, "ignoreTimeScale=false", "updateMode=FixedDeltaTime");
+            Equal("0", Infos(path, "m_UpdateMode"), "back to Unity's default");
+
+            Sh("resource", "set", path, "culling=CullNone", "initialEvent=Begin", "instancing=Custom", "instancingCapacity=16");
+            Equal("0", Infos(path, "m_CullingFlags"), "culling");
+            Equal("Begin", Infos(path, "m_InitialEventName"), "initial event");
+            Equal("1", Infos(path, "m_InstancingMode"), "instancing mode");
+            Equal("16", Infos(path, "m_InstancingCapacity"), "instancing capacity");
+            Sh("resource", "set", path, "instancing=Disabled");
+            Equal("-1", Infos(path, "m_InstancingMode"), "instancing off");
+            Check(Fails("resource", "set", path, "instancingCapacity=8").Contains("Custom", StringComparison.Ordinal),
+                  "a capacity without Custom instancing is refused");
+
+            Sh("resource", "set", path, "prewarmTime=2");
+            Equal("40", Infos(path, "m_PreWarmStepCount"), "2s at the default 0.05s step");
+            Equal("0.05", Infos(path, "m_PreWarmDeltaTime"), "the step length is kept");
+            Sh("resource", "set", path, "prewarmTime=1", "prewarmSteps=10");
+            Equal("0.1", Infos(path, "m_PreWarmDeltaTime"), "a given step count derives the step length");
+            Sh("resource", "set", path, "prewarmTime=0");
+            Equal("0", Infos(path, "m_PreWarmStepCount"), "no prewarm");
+            Check(Fails("resource", "set", path, "prewarmDeltaTime=0.0001").Contains("1/800", StringComparison.Ordinal),
+                  "a step under the inspector's minimum is refused");
+
+            var before = File.ReadAllText(path);
+            Check(Fails("resource", "set", path, "updateMode=DeltaTime", "culling=Sometimes").Contains("CullDefault", StringComparison.Ordinal),
+                  "an unknown value lists the choices");
+            Check(Fails("resource", "set", path, "updatemode=Sometimes").Contains("FixedDeltaTime", StringComparison.Ordinal),
+                  "an unknown update mode lists the choices");
+            Check(Fails("resource", "set", path, "speed=2").Contains("updateMode", StringComparison.Ordinal),
+                  "an unknown key lists the keys");
+            Equal(before, File.ReadAllText(path), "a refused command writes nothing");
+
+            Sh("apply", path, Script("resource", "resource set updateMode=DeltaTime"));
+            Equal("1", Infos(path, "m_UpdateMode"), "resource set runs inside a script");
+        }
+
+        static void AutomaticBoundsKeepCullingOff()
+        {
+            var path = BuildSystem("autobounds");
+            var init = Only(VfxAsset.Load(path), n => n.DisplayType == "VFXBasicInitialize", "initialize");
+            Sh("system", "set", path, init.Data.ShortId, "boundsMode=Automatic");
+            Check(Fails("resource", "set", path, "culling=CullDefault").Contains("automatically", StringComparison.Ordinal),
+                  "culling is refused while a system computes its bounds");
+            Sh("resource", "set", path, "culling=CullNone");
         }
     }
 }

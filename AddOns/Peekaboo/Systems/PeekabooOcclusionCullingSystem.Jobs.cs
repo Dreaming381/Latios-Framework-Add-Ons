@@ -70,9 +70,15 @@ namespace Latios.Peekaboo.Systems
         /// covers it. That check has to happen before the reduction, because minps drops a NaN instead
         /// of passing it through.
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static bool TryProjectBoundsWide(in PeekabooView view, AABB aabb, out float4 span, out float nearestCloseness,
                                          out float farthestCloseness)
         {
+            // Burst checks each compiled function against the player's CPU target, so every function with AVX
+            // instructions needs its own check, even though callers only come here when AVX is supported.
+            if (!X86.Avx.IsAvxSupported)
+                return TryProjectBoundsPortable(in view, aabb, out span, out nearestCloseness, out farthestCloseness);
+
             span              = default;
             nearestCloseness  = float.NegativeInfinity;
             farthestCloseness = float.PositiveInfinity;
@@ -127,6 +133,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float4 ReduceCorners(v256 screenX, v256 screenY)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return default;
             var near = X86.Avx.mm256_permute2f128_ps(screenX, screenY, 0x20);
             var far  = X86.Avx.mm256_permute2f128_ps(screenX, screenY, 0x31);
 
@@ -147,6 +155,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static v256 ProjectAxis(v256 x, v256 y, v256 z, float3 axis)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return default;
             var accumulated = X86.Avx.mm256_mul_ps(x, new v256(axis.x));
             accumulated     = X86.Avx.mm256_add_ps(accumulated, X86.Avx.mm256_mul_ps(y, new v256(axis.y)));
             return X86.Avx.mm256_add_ps(accumulated, X86.Avx.mm256_mul_ps(z, new v256(axis.z)));
@@ -155,6 +165,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float ReduceMin(v256 v)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return default;
             var q = X86.Sse.min_ps(X86.Avx.mm256_castps256_ps128(v), X86.Avx.mm256_extractf128_ps(v, 1));
             q     = X86.Sse.min_ps(q, X86.Sse.shuffle_ps(q, q, X86.Sse.SHUFFLE(1, 0, 3, 2)));
             q     = X86.Sse.min_ps(q, X86.Sse.shuffle_ps(q, q, X86.Sse.SHUFFLE(2, 3, 0, 1)));
@@ -164,6 +176,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float ReduceMax(v256 v)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return default;
             var q = X86.Sse.max_ps(X86.Avx.mm256_castps256_ps128(v), X86.Avx.mm256_extractf128_ps(v, 1));
             q     = X86.Sse.max_ps(q, X86.Sse.shuffle_ps(q, q, X86.Sse.SHUFFLE(1, 0, 3, 2)));
             q     = X86.Sse.max_ps(q, X86.Sse.shuffle_ps(q, q, X86.Sse.SHUFFLE(2, 3, 0, 1)));
@@ -285,8 +299,16 @@ namespace Latios.Peekaboo.Systems
         /// gathered, not transposed, because the source bounds aren't laid out this way and gathering
         /// eight values is cheaper than shuffling.
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ProjectEightPerspective(in PeekabooView view, float* soa, float4* spans, float* nearest, out uint accepted)
         {
+            // Only called when AVX is supported; see TryProjectBoundsWide.
+            if (!X86.Avx.IsAvxSupported)
+            {
+                accepted = 0;
+                return;
+            }
+
             var originX = new v256(view.origin.x);
             var originY = new v256(view.origin.y);
             var originZ = new v256(view.origin.z);
@@ -366,6 +388,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static v256 Axis(v256 x, v256 y, v256 z, float3 axis)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return default;
             var lateral = X86.Avx.mm256_add_ps(X86.Avx.mm256_mul_ps(x, new v256(axis.x)), X86.Avx.mm256_mul_ps(y, new v256(axis.y)));
             return X86.Avx.mm256_add_ps(lateral, X86.Avx.mm256_mul_ps(z, new v256(axis.z)));
         }
@@ -376,6 +400,8 @@ namespace Latios.Peekaboo.Systems
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void Store(float4* spans, int slot, v256 pair)
         {
+            if (!X86.Avx.IsAvxSupported)
+                return;
             X86.Sse.storeu_ps(spans + slot,     X86.Avx.mm256_castps256_ps128(pair));
             X86.Sse.storeu_ps(spans + slot + 4, X86.Avx.mm256_extractf128_ps(pair, 1));
         }

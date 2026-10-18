@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using ShaderWaitress.Catalog;
@@ -790,22 +791,151 @@ namespace ShaderWaitress.Edit
         {
             if (doc.Targets.Count == 0)
                 throw new ShaderWaitressException("this graph has no targets");
-            var chosen = args.Has("id")
-                ? doc.Targets.FirstOrDefault(t => t.ShortId == args.Get("id")) ?? throw new ShaderWaitressException($"no target '{args.Get("id")}'")
-                : doc.Targets[0];
             if (rest.Count == 0)
                 throw new ShaderWaitressException("nothing to set. Known keys: " + string.Join(", ", TargetSettings.KnownKeys));
+
+            // A graph with several targets renders one shader on several pipelines, so an
+            // unqualified setting goes to every target that has it.
+            var chosen = args.Has("id") ? new List<SgTarget> { doc.ResolveTarget(args.Get("id")) } : doc.Targets.ToList();
             foreach (var assignment in rest)
             {
                 var eq = assignment.IndexOf('=');
                 if (eq <= 0)
                     throw new ShaderWaitressException($"expected key=value, got '{assignment}'");
-                editor.Log.Add("target " + TargetSettings.Apply(chosen, assignment.Substring(0, eq), assignment.Substring(eq + 1)));
+                var key = assignment.Substring(0, eq);
+                var value = assignment.Substring(eq + 1);
+                var targets = chosen.Count == 1 ? chosen : chosen.Where(t => TargetSettings.Has(t, key)).ToList();
+                if (targets.Count == 0)
+                    throw new ShaderWaitressException(
+                        $"none of this graph's targets ({string.Join(", ", chosen.Select(t => t.Label))}) has a '{key}' setting. " +
+                        "'target show --raw' lists the fields each one has");
+                foreach (var target in targets)
+                {
+                    var applied = TargetSettings.Apply(target, key, value);
+                    editor.Log.Add(doc.Targets.Count == 1 ? "target " + applied : $"target {target.ShortId} {target.Label} {applied}");
+                }
+            }
+            SyncBlocks(doc, editor, args);
+        }
+
+        public static void TargetAdd(ShaderGraphDocument doc, GraphEditor editor, Args args, IReadOnlyList<string> rest)
+        {
+            if (doc.IsSubGraph)
+                throw new ShaderWaitressException("a sub-graph has no render targets; the shader graph that uses it does");
+            var from = args.Get("from");
+            var name = rest.Count > 0 ? rest[0] : null;
+            if (rest.Count > 1)
+                throw new ShaderWaitressException($"unexpected '{rest[1]}'. usage: target add <graph> <name> [--from <catalog|project|graph>]");
+
+            var (source, starter) = FindTargetSource(name, from);
+            var clash = doc.Targets.FirstOrDefault(t => t.Entry.TypeName == source.Entry.TypeName);
+            if (clash != null)
+                throw new ShaderWaitressException(
+                    $"this graph already has a {clash.TypeLabel} target ({clash.ShortId} {clash.Label}), and Shader Graph allows one per " +
+                    "pipeline. Change it with 'target set', or 'target rm' it first");
+
+            var added = editor.AddTarget(source);
+
+            // Targets on one graph are meant to render the same shader, so a setting that differs
+            // between them is usually a starter default nobody changed.
+            var mine = TargetSettings.Describe(added).Select(s => s.Split('=', 2)).ToDictionary(p => p[0], p => p[1]);
+            foreach (var other in doc.Targets.Where(t => t != added))
+            {
+                var differences = TargetSettings.Describe(other)
+                    .Select(s => s.Split('=', 2))
+                    .Where(p => mine.TryGetValue(p[0], out var value) && value != p[1])
+                    .Select(p => $"{p[0]}={mine[p[0]]} vs {p[1]}")
+                    .ToList();
+                if (differences.Count > 0)
+                    editor.Log.Add($"note: {added.Label} differs from {other.ShortId} {other.Label} on {string.Join(", ", differences)}. " +
+                                   "'target set' without --id sets every target that has the key");
             }
 
-            // Switching to transparent leaves the opaque block list behind, so there is nowhere
-            // to send alpha. Only ever additive: deciding a block is surplus needs the active
-            // list, which only the Editor can produce.
+            // The new target uses a block's default value until the graph has the block, which is
+            // usually what a second pipeline wants, so the starter's extra blocks are named, not added.
+            if (starter != null)
+            {
+                var present = doc.Nodes.Where(n => n.IsBlock).Select(n => n.BlockDescriptor).ToHashSet();
+                var extra = starter.Nodes.Where(n => n.IsBlock && !present.Contains(n.BlockDescriptor)).Select(n => n.BlockDescriptor).ToList();
+                if (extra.Count > 0)
+                    editor.Log.Add($"note: the starter also has {string.Join(", ", extra)}. Until the graph has one, the target uses " +
+                                   "its default; 'block add' adds it");
+            }
+            SyncBlocks(doc, editor, args);
+        }
+
+        public static void TargetRm(ShaderGraphDocument doc, GraphEditor editor, IReadOnlyList<string> rest)
+        {
+            if (rest.Count != 1)
+                throw new ShaderWaitressException("usage: target rm <graph> <target>   (a short id, or a name such as hd or universal)");
+            var target = doc.ResolveTarget(rest[0]);
+            if (doc.Targets.Count == 1)
+                throw new ShaderWaitressException($"{target.ShortId} {target.Label} is the graph's only target, and a graph with none cannot build a shader");
+            editor.RemoveTarget(target);
+        }
+
+        /// <summary>
+        /// Where 'target add' copies from. With no --from it is a starter in this project's
+        /// catalog. --from names a catalog exported in another project (or that project's
+        /// folder), which is how an HDRP target reaches a URP project, or a graph, whose target
+        /// is copied with all its settings. Returns the starter document too, for its blocks.
+        /// </summary>
+        static (SgTarget target, ShaderGraphDocument starter) FindTargetSource(string name, string from)
+        {
+            if (from != null && (from.EndsWith(".shadergraph", StringComparison.OrdinalIgnoreCase) ||
+                                 from.EndsWith(".shadersubgraph", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!File.Exists(from))
+                    throw new ShaderWaitressException("no such graph: " + from);
+                var graph = ShaderGraphDocument.Load(from);
+                if (graph.Targets.Count == 0)
+                    throw new ShaderWaitressException($"{from} has no render targets to copy");
+                if (name == null && graph.Targets.Count > 1)
+                    throw new ShaderWaitressException($"{from} has {graph.Targets.Count} targets; name one: " +
+                                                      string.Join(", ", graph.Targets.Select(t => t.Label.ToLowerInvariant())));
+                return (name == null ? graph.Targets[0] : graph.ResolveTarget(name), null);
+            }
+
+            if (name == null)
+                throw new ShaderWaitressException("usage: target add <graph> <name> [--from <catalog|project|graph>], e.g. target add g.shadergraph hd/lit");
+            NodeCatalog catalog;
+            var origin = "this project's catalog";
+            if (from == null)
+            {
+                catalog = NodeCatalog.Shared;
+            }
+            else
+            {
+                var path = Directory.Exists(from) ? Path.Combine(from, "UserSettings", "Waitress", "nodes.json") : from;
+                if (!File.Exists(path))
+                    throw new ShaderWaitressException($"no catalog at {path}. --from takes a catalog file, a Unity project folder " +
+                                                      "with an exported catalog, or a .shadergraph");
+                catalog = NodeCatalog.Load(path);
+                origin = path;
+            }
+
+            var starter = catalog.FindStarter(name);
+            if (starter == null || string.Equals(starter.Kind, "subgraph", StringComparison.OrdinalIgnoreCase))
+            {
+                var available = string.Join(", ", catalog.Starters.Where(s => s.Kind != "subgraph").Select(s => s.Name));
+                throw new ShaderWaitressException(
+                    $"no '{name}' starter in {origin}. Available: {(available.Length == 0 ? "none" : available)}. " +
+                    "A pipeline that is not installed in this project has no starter here: export a catalog in a project that has it " +
+                    "and pass --from <that project>, or pass --from <graph> to copy the target out of an existing graph");
+            }
+            var doc = ShaderGraphDocument.FromRaw(MultiJsonDocument.Parse(starter.Text), null, catalog);
+            if (doc.Targets.Count == 0)
+                throw new ShaderWaitressException($"the '{starter.Name}' starter has no target");
+            return (doc.Targets[0], doc);
+        }
+
+        /// <summary>
+        /// Settings changes and new targets leave the block list behind, so there is nowhere to
+        /// send alpha or the normal. Only ever additive: deciding a block is surplus needs the
+        /// active list, which only the Editor can produce.
+        /// </summary>
+        static void SyncBlocks(ShaderGraphDocument doc, GraphEditor editor, Args args)
+        {
             if (args.Flag("sync-blocks"))
             {
                 var added = 0;

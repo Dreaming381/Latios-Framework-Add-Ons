@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "Unity.Pipeline",
+        "Unity.Pipeline.Attributes",
         "Unity.ShaderGraph.Editor"
     ],
     "includePlatforms": [

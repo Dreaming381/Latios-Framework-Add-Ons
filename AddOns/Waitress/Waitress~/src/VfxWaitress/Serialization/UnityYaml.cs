@@ -165,6 +165,8 @@ namespace VfxWaitress.Serialization
         /// <summary>
         /// A block of "- " lines has to be stored as a sequence. As opaque text, the next read of
         /// that key would find nothing, and a second edit in the same run would wipe the list.
+        /// Items are grouped as <see cref="UnityYaml"/> parses them: a <c>- </c> line at the
+        /// sequence's indent starts one, and deeper lines continue it.
         /// </summary>
         static YNode BlockNode(string blockText)
         {
@@ -175,11 +177,26 @@ namespace VfxWaitress.Serialization
                 if (line.Length == 0)
                     continue;
                 var trimmed = line.TrimStart();
-                if (!trimmed.StartsWith("- ", StringComparison.Ordinal))
-                    return new YSeqOrMapText(blockText);
+                var lineIndent = line.Substring(0, line.Length - trimmed.Length);
                 if (items.Count == 0)
-                    indent = line.Substring(0, line.Length - trimmed.Length);
-                items.Add(line + "\n");
+                {
+                    if (!trimmed.StartsWith("- ", StringComparison.Ordinal))
+                        return new YSeqOrMapText(blockText);
+                    indent = lineIndent;
+                    items.Add(line + "\n");
+                }
+                else if (lineIndent == indent && trimmed.StartsWith("- ", StringComparison.Ordinal))
+                {
+                    items.Add(line + "\n");
+                }
+                else if (lineIndent.Length > indent.Length)
+                {
+                    items[items.Count - 1] += line + "\n";
+                }
+                else
+                {
+                    return new YSeqOrMapText(blockText);
+                }
             }
             if (items.Count == 0)
                 return new YSeqOrMapText(blockText);

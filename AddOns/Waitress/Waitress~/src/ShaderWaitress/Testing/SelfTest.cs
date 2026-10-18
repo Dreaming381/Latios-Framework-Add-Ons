@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using ShaderWaitress.Catalog;
 using ShaderWaitress.Cli;
 using ShaderWaitress.Edit;
@@ -145,6 +146,9 @@ namespace ShaderWaitress.Testing
             yield return ("block/follows-target", BlocksFollowTheTargetSettings);
             yield return ("prop/texture-default", TextureDefaultIsVisibleAndSettable);
             yield return ("ids/new-prefixes-are-free", NewIdsAvoidTakenPrefixes);
+            yield return ("target/sub-target-fields", TargetKeysReachTheSubTarget);
+            yield return ("target/hdrp-data-objects", TargetKeysReachHdrpDataObjects);
+            yield return ("target/add-rm", TargetsCanBeAddedAndRemoved);
         }
 
         // ---- helpers ----
@@ -1835,6 +1839,190 @@ namespace ShaderWaitress.Testing
                 Check(taken.Add(prefix), $"new id #{i} reused the prefix {prefix}");
             }
         }
+        /// <summary>
+        /// URP keeps its normal space on the Lit sub-target, not the target, and a lit graph
+        /// that writes an object-space normal needs it set or the normal goes nowhere.
+        /// </summary>
+        static void TargetKeysReachTheSubTarget()
+        {
+            var path = NewGraph("normalspace", "universal/lit");
+            Sh("target", "set", path, "normalspace=object");
+            var target = Load(path).Targets[0];
+            Equal(1, Json.Int(target.SubTarget.Node["m_NormalDropOffSpace"], -1), "normalspace lands on the Lit sub-target");
+            Check(!target.Entry.Node.ContainsKey("m_NormalDropOffSpace"), "and nothing is written onto the target");
+            Check(TargetSettings.Describe(target).Contains("normalspace=object"), "target show reports it");
+
+            var problems = Validator.Run(Load(path));
+            Check(problems.Any(p => p.Contains("SurfaceDescription.NormalOS", StringComparison.Ordinal)),
+                "validate says the target no longer reads the graph's NormalTS: " + string.Join("; ", problems));
+            Sh("target", "set", path, "normalspace=object", "--sync-blocks");
+            var doc = Load(path);
+            Check(doc.Nodes.Any(n => n.BlockDescriptor == "SurfaceDescription.NormalOS"), "--sync-blocks adds NormalOS");
+            Equal(0, Validator.Run(doc).Count, "and the graph validates clean");
+
+            Sh("target", "set", path, "m_WorkflowMode=0");
+            Equal(0, Json.Int(Load(path).Targets[0].SubTarget.Node["m_WorkflowMode"], -1), "a raw sub-target field is settable");
+
+            var unlit = NewGraph("normalspace-unlit");
+            Expect<ShaderWaitressException>(
+                () => CommandRouter.Run(new[] { "target", "set", unlit, "normalspace=object" }, TextWriter.Null, TextWriter.Null),
+                e => e.Message.Contains("'normalspace'", StringComparison.Ordinal),
+                "a key the target does not have is refused rather than written where it means nothing");
+        }
+
+        /// <summary>
+        /// HDRP keeps nearly every setting on data objects the target references. Keys have to
+        /// reach them, and must never land on the HDTarget object, where Unity ignores them.
+        /// </summary>
+        static void TargetKeysReachHdrpDataObjects()
+        {
+            var path = NewGraph("hdrp-keys", "universal/lit");
+            Sh("target", "add", path, "hdrp/lit", "--from", HdrpProject());
+
+            Sh("target", "set", path, "surface=transparent", "alphaclip=on", "--sync-blocks");
+            var doc = Load(path);
+            var hd = doc.ResolveTarget("hd");
+            var urp = doc.ResolveTarget("universal");
+            Equal(1, Json.Int(Owned(hd, "SystemData")["m_SurfaceType"], -1), "surface reaches HDRP's SystemData");
+            Equal(true, Json.Bool(Owned(hd, "SystemData")["m_AlphaTest"], false), "alphaclip is HDRP's m_AlphaTest");
+            Check(!hd.Entry.Node.ContainsKey("m_SurfaceType") && !hd.Entry.Node.ContainsKey("m_AlphaClip"),
+                "nothing is written onto the HDTarget object itself");
+            Check(TargetSettings.Describe(urp).Contains("surface=transparent"), "an unqualified key reaches every target that has it");
+            Check(doc.Nodes.Any(n => n.BlockDescriptor == "SurfaceDescription.AlphaClipThreshold"), "and --sync-blocks still works");
+
+            Sh("target", "set", path, "blend=additive");
+            Check(Load(path).ResolveTarget("hd").Owned.All(e => !e.Node.ContainsKey("m_AlphaMode")),
+                "a key only URP has goes to URP alone");
+
+            Expect<ShaderWaitressException>(
+                () => CommandRouter.Run(new[] { "target", "set", path, "--id", "hd", "m_TransparentDepthPrepass=true" }, TextWriter.Null, TextWriter.Null),
+                e => e.Message.Contains("SystemData.m_TransparentDepthPrepass", StringComparison.Ordinal),
+                "a raw field two data objects share has to be qualified");
+            Sh("target", "set", path, "--id", "hd", "BuiltinData.m_TransparentDepthPrepass=true", "lodcrossfade=on");
+            hd = Load(path).ResolveTarget("hd");
+            Equal(true, Json.Bool(Owned(hd, "BuiltinData")["m_TransparentDepthPrepass"], false), "the qualified field is set");
+            Equal(false, Json.Bool(Owned(hd, "SystemData")["m_TransparentDepthPrepass"], true), "and only that one");
+            Equal(true, Json.Bool(Owned(hd, "BuiltinData")["m_SupportLodCrossFade"], false), "lodcrossfade is BuiltinData's");
+            Equal(false, Json.Bool(Owned(hd, "SystemData")["m_SupportLodCrossFade"], true), "not SystemData's migration copy");
+
+            var raw = Sh("target", "show", path, "--raw");
+            Check(raw.Contains("[LightingData] m_NormalDropOffSpace=0", StringComparison.Ordinal), "--raw lists the data objects' fields: " + raw);
+        }
+
+        static void TargetsCanBeAddedAndRemoved()
+        {
+            var project = HdrpProject();
+            var path = NewGraph("multitarget", "universal/lit");
+            Expect<ShaderWaitressException>(
+                () => CommandRouter.Run(new[] { "target", "add", path, "hd/lit" }, TextWriter.Null, TextWriter.Null),
+                e => e.Message.Contains("--from", StringComparison.Ordinal),
+                "a pipeline this project's catalog lacks says where to get it");
+
+            Sh("target", "add", path, "hdrp/lit", "--from", project);
+            var doc = Load(path);
+            Equal(2, doc.Targets.Count, "the graph has both targets");
+            Equal("HD/Lit", doc.Targets[0].Label, "sorted the way the Editor sorts them");
+            Equal(6, doc.Targets[0].Owned.Count, "the target came with its sub-target and four data objects");
+            Check(doc.Targets[0].Owned.All(e => !e.ObjectId.StartsWith("b000000000", StringComparison.Ordinal)), "under fresh ids");
+            Equal(0, Validator.Run(doc).Count, "the result validates clean");
+
+            Expect<ShaderWaitressException>(
+                () => CommandRouter.Run(new[] { "target", "add", path, "hd/lit", "--from", project }, TextWriter.Null, TextWriter.Null),
+                e => e.Message.Contains("one per", StringComparison.Ordinal),
+                "Shader Graph allows one target per pipeline");
+
+            // A graph's target comes with its settings, which is what makes it a template.
+            Sh("target", "set", path, "--id", "hd", "normalspace=world");
+            var copy = NewGraph("multitarget-copy");
+            Sh("target", "add", copy, "--from", path, "hd");
+            Equal(2, Json.Int(Owned(Load(copy).ResolveTarget("hd"), "LightingData")["m_NormalDropOffSpace"], -1),
+                "copying from a graph keeps the target's settings");
+
+            var scripted = NewGraph("multitarget-script", "universal/lit");
+            var scriptPath = Path.Combine(s_Scratch, "multitarget.sw");
+            File.WriteAllText(scriptPath, $"target add hd/lit --from \"{project}\"\ntarget set --id hd normalspace=object");
+            Sh("apply", scripted, scriptPath);
+            Equal(2, Load(scripted).Targets.Count, "target add works in a script");
+
+            var before = Load(path).Raw.Entries.Count;
+            Sh("target", "rm", path, "hd");
+            doc = Load(path);
+            Equal(before - 6, doc.Raw.Entries.Count, "rm takes everything the target owned");
+            Equal(0, Validator.Run(doc).Count, "and leaves nothing dangling");
+            Expect<ShaderWaitressException>(
+                () => CommandRouter.Run(new[] { "target", "rm", path, "universal" }, TextWriter.Null, TextWriter.Null),
+                e => e.Message.Contains("only target", StringComparison.Ordinal),
+                "the last target cannot be removed");
+        }
+
+        static JsonObject Owned(SgTarget target, string shortType) =>
+            target.Owned.First(e => e.TypeName.EndsWith("." + shortType, StringComparison.Ordinal)).Node;
+
+        /// <summary>
+        /// A project folder whose catalog has an HDRP Lit starter, laid out the way the exporter
+        /// writes one. The objects carry the fields the tests touch, including the two HDRP keeps
+        /// on both SystemData and BuiltinData.
+        /// </summary>
+        static string HdrpProject()
+        {
+            var dir = Path.Combine(s_Scratch, "hdrp-project");
+            var catalogPath = Path.Combine(dir, "UserSettings", "Waitress", "nodes.json");
+            if (File.Exists(catalogPath))
+                return dir;
+            Directory.CreateDirectory(Path.GetDirectoryName(catalogPath));
+
+            const string hd = "UnityEditor.Rendering.HighDefinition.ShaderGraph.";
+            static string Id(int n) => "b0" + n.ToString("x30");
+            static JsonObject Object(string type, string id, JsonObject fields)
+            {
+                var o = new JsonObject { ["m_SGVersion"] = 0, ["m_Type"] = type, ["m_ObjectId"] = id };
+                foreach (var pair in fields.ToList())
+                {
+                    fields.Remove(pair.Key);
+                    o[pair.Key] = pair.Value;
+                }
+                return o;
+            }
+
+            var objects = new[]
+            {
+                Object("UnityEditor.ShaderGraph.GraphData", Id(1), new JsonObject
+                {
+                    ["m_Nodes"] = new JsonArray(), ["m_Edges"] = new JsonArray(),
+                    ["m_ActiveTargets"] = UnityJsonWriter.RefArray(new[] { Id(2) }),
+                }),
+                Object(hd + "HDTarget", Id(2), new JsonObject
+                {
+                    ["m_ActiveSubTarget"] = UnityJsonWriter.Ref(Id(3)),
+                    ["m_Datas"] = UnityJsonWriter.RefArray(new[] { Id(4), Id(5), Id(6), Id(7) }),
+                    ["m_CustomEditorGUI"] = "", ["m_SupportVFX"] = false,
+                }),
+                Object(hd + "HDLitSubTarget", Id(3), new JsonObject()),
+                Object(hd + "HDLitData", Id(4), new JsonObject { ["m_MaterialType"] = 0 }),
+                Object(hd + "BuiltinData", Id(5), new JsonObject
+                {
+                    ["m_TransparentDepthPrepass"] = false, ["m_SupportLodCrossFade"] = false,
+                }),
+                Object(hd + "LightingData", Id(6), new JsonObject { ["m_NormalDropOffSpace"] = 0, ["m_ReceiveDecals"] = true }),
+                Object(hd + "SystemData", Id(7), new JsonObject
+                {
+                    ["m_SurfaceType"] = 0, ["m_ZTest"] = 4, ["m_ZWrite"] = false, ["m_AlphaTest"] = false,
+                    ["m_TransparentDepthPrepass"] = false, ["m_SupportLodCrossFade"] = false, ["m_DoubleSidedMode"] = 0,
+                }),
+            };
+            var text = string.Concat(objects.Select(o => UnityJsonWriter.Write(o) + "\n\n"));
+            var catalog = new JsonObject
+            {
+                ["generatedBy"] = "selftest",
+                ["starters"] = new JsonArray
+                {
+                    new JsonObject { ["name"] = "hd/lit", ["target"] = hd + "HDTarget", ["subTarget"] = hd + "HDLitSubTarget", ["text"] = text },
+                },
+            };
+            File.WriteAllText(catalogPath, catalog.ToJsonString());
+            return dir;
+        }
+
         static int CountOccurrences(string haystack, string needle)
         {
             var count = 0;

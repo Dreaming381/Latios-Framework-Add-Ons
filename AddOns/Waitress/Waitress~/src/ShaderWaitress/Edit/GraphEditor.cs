@@ -119,6 +119,41 @@ namespace ShaderWaitress.Edit
             return created;
         }
 
+        // ---------- targets ----------
+
+        /// <summary>
+        /// Copies a target and everything it owns out of another document with fresh ids. The
+        /// Editor keeps active targets sorted by display name, which for every shipped pipeline
+        /// sorts the same as the type label.
+        /// </summary>
+        public SgTarget AddTarget(SgTarget source)
+        {
+            var created = Instantiate(source.Owned.Select(e => e.Serialize()).ToList());
+            var label = source.TypeLabel;
+            var active = RootArray("m_ActiveTargets");
+            var index = 0;
+            while (index < active.Count &&
+                   string.Compare(Doc.Targets.FirstOrDefault(t => t.ObjectId == UnityJsonWriter.RefId(active[index]))?.TypeLabel,
+                                  label, StringComparison.OrdinalIgnoreCase) < 0)
+                index++;
+            active.Insert(index, UnityJsonWriter.Ref(created[0].ObjectId));
+
+            Doc.Rebuild();
+            var target = Doc.Targets.First(t => t.ObjectId == created[0].ObjectId);
+            Log.Add($"added target {target.ShortId} {target.Label}");
+            return target;
+        }
+
+        public void RemoveTarget(SgTarget target)
+        {
+            var shared = Doc.Targets.Where(t => t != target).SelectMany(t => t.Owned).Select(e => e.ObjectId).ToHashSet();
+            RemoveRef(RootArray("m_ActiveTargets"), target.ObjectId);
+            foreach (var entry in target.Owned.Where(e => !shared.Contains(e.ObjectId)))
+                Doc.Raw.Remove(entry.ObjectId);
+            Log.Add($"removed target {target.ShortId} {target.Label}");
+            Doc.Rebuild();
+        }
+
         public void RemoveNode(SgNode node, bool reconnect)
         {
             if (node.IsBlock)

@@ -11,7 +11,7 @@ READING
         Run a chainable selector. See 'help select'.
   node show <graph> "<selector>"
         Every port of the matched nodes, with types, values and wiring.
-  prop list <graph> | group list <graph> | keyword list <graph> | target show <graph>
+  prop list <graph> | group list <graph> | keyword list <graph> | target show <graph> [--raw]
   settings show <graph>
   validate <graph> [--editor]
         Structural and layout problems. Exit code 1 if any were found.
@@ -37,7 +37,10 @@ EDITING                                     (all of these re-run layout)
   prop add|rm|set <graph> ... [--declaration per-material|global|hybrid-per-instance]
   keyword add|rm|set <graph> ...
   block list|add|rm <graph> ...
-  target set <graph> key=value...
+  target set <graph> key=value... [--id <target>]
+  target add <graph> <name> [--from <catalog|project|graph>]
+  target rm <graph> <target>
+        A second pipeline on the same graph, e.g. target add g hd/lit --from <hdrp project>.
   settings set <graph> key=value...
   layout <graph> [--report] [--no-refine] [--remeasure]
   apply <graph> <script-file>|--script -

@@ -155,7 +155,15 @@ imported it once.
 created opaque and switched to transparent keeps the opaque block list, so there
 is no `SurfaceDescription.Alpha` to wire a fade into. `validate` reports it. Use `target set … surface=transparent --sync-blocks`, or `block add
 <graph> SurfaceDescription.Alpha`. `block list` shows what the graph has and what
-its settings imply.
+its settings imply. The same goes for a lit target's `normalspace`: it decides
+whether the target reads NormalTS, NormalOS or NormalWS.
+
+**One graph can carry several pipelines.** `target add <graph> hd/lit --from
+<an HDRP project>` copies the target out of that project's exported catalog
+(`--from <graph>` copies one out of a graph); this project's catalog only has
+the pipelines installed here. Settings without `--id` go to every target that
+has them, and `target show --raw` lists every field each target, sub-target and
+HDRP data object carries, all settable by name.
 
 **A texture property samples as White while nothing is assigned**, and a White
 texture read as a normal map unpacks to a tilted normal — so every material that
@@ -189,7 +197,7 @@ shaderwaitress apply Fx.shadergraph edits.sw
 
 Every editing verb works in a script, with the graph path omitted: `node
 add|insert|rm|set|replace`, `wire`, `unwire`, `group`, `prop`, `keyword`,
-`target set`, `settings set`, `echo`. So a graph that needs a keyword and a
+`target set|add|rm`, `settings set`, `echo`. So a graph that needs a keyword and a
 target change is still one invocation.
 
 ```

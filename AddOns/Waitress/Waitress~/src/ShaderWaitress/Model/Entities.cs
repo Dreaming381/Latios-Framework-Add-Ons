@@ -584,7 +584,15 @@ namespace ShaderWaitress.Model
         public MultiJsonEntry SubTarget;
         public string ShortId;
 
+        /// <summary>
+        /// The target and every object it references: its sub-target and, on HDRP, the data
+        /// objects that hold most of its settings. The target itself is first.
+        /// </summary>
+        public List<MultiJsonEntry> Owned = new List<MultiJsonEntry>();
+
         public string ObjectId => Entry.ObjectId;
+
+        public string Label => SubTargetLabel == null ? TypeLabel : TypeLabel + "/" + SubTargetLabel;
 
         public string TypeLabel
         {
@@ -602,10 +610,11 @@ namespace ShaderWaitress.Model
                 if (SubTarget == null)
                     return null;
                 var s = SlotTypes.ShortName(SubTarget.TypeName) ?? SubTarget.TypeName;
-                if (s.StartsWith("Universal", StringComparison.Ordinal))
-                    s = s.Substring("Universal".Length);
                 if (s.EndsWith("SubTarget", StringComparison.Ordinal))
                     s = s.Substring(0, s.Length - "SubTarget".Length);
+                var prefix = TypeLabel;
+                if (s.StartsWith(prefix, StringComparison.Ordinal) && s.Length > prefix.Length)
+                    s = s.Substring(prefix.Length);
                 return s;
             }
         }

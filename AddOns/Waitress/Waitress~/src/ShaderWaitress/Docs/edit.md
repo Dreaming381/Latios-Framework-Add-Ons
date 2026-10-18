@@ -143,14 +143,53 @@ GROUPS
 
 TARGET AND GRAPH SETTINGS
 
-  target show <graph>
+  target show <graph> [--raw]
   target set <graph> surface=transparent blend=additive cull=off zwrite=off
+  target set <graph> --id hd normalspace=object
   settings set <graph> precision=half path="My/Shaders"
 
   Target keys: surface, blend, renderface, zwrite, ztest, alphaclip,
   castshadows, receiveshadows, materialoverride, lodcrossfade, vfx,
-  customeditor. Any raw field name of the target object also works, for
-  pipelines this table has never seen.
+  normalspace (tangent|object|world, lit targets only), customeditor.
+
+  A setting can live on the target, on its sub-target (URP's normal space), or
+  on one of the data objects HDRP keeps nearly everything in (SystemData,
+  LightingData, BuiltinData, ...). The keys find the right one, and a key the
+  target has nowhere to put is refused rather than written where Unity ignores
+  it. Any raw field of any of those objects also works: `target show --raw`
+  lists them all. A field two objects both carry is named with its owner:
+  BuiltinData.m_TransparentDepthPrepass=on.
+
+  On a graph with several targets, a key without --id goes to every target
+  that has it. --id takes a short id or a pipeline name (universal, hd).
+
+  normalspace decides which normal block a lit target reads: NormalTS, NormalOS
+  or NormalWS. `validate` reports a target whose space does not match the
+  graph's normal block, and --sync-blocks adds the block it reads.
+
+SEVERAL PIPELINES ON ONE GRAPH
+
+  target add <graph> hd/lit --from "D:/Projects/MyHdrpProject"
+  target add <graph> hd --from Other.shadergraph
+  target add <graph> builtin/lit
+  target rm  <graph> hd
+
+  `target add` copies a target, with its sub-target and data objects, into
+  the graph and keeps every block the graph has. With no --from the target
+  comes from this project's catalog (`nodes --starters`). A pipeline that is not
+  installed here has no starter here, so --from names a catalog exported in a
+  project that has it: the catalog file, or that project's folder. --from a
+  graph copies that graph's target with all its settings. hdrp and urp are
+  accepted for hd and universal.
+
+  The new target uses a block's default value until the graph has the block,
+  so the starter's extra blocks are listed, not added. Settings where the new
+  target differs from an existing one are listed too: a target from a starter
+  carries the starter's defaults, not the graph's choices.
+
+  A URP project still opens, imports and builds a graph that carries an HDRP
+  target: Shader Graph keeps the target it cannot load as-is and saves it back
+  unchanged.
 
   renderface is named after what Unity stores: which faces to RENDER, not which
   to cull. renderface=front culls the back, renderface=both culls nothing.
@@ -183,7 +222,7 @@ Every editing verb works in a script, with the graph path omitted:
 
   node add|insert|rm|set|replace     wire        unwire
   group new|add|clear|rename|rm      prop add|rm|set
-  keyword add|rm|set                 target set  settings set
+  keyword add|rm|set                 target set|add|rm  settings set
   block add|rm                       echo <text>
 
 A line ending in a backslash continues on the next one, so a node with many

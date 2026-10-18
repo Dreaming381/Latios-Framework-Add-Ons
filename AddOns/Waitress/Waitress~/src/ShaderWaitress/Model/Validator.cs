@@ -104,42 +104,10 @@ namespace ShaderWaitress.Model
         {
             if (entry == null || !visited.Add(entry.ObjectId))
                 return;
-            foreach (var id in CollectRefs(entry.Node))
+            foreach (var id in UnityJsonWriter.RefIds(entry.Node))
             {
                 referenced.Add(id);
                 Walk(doc, doc.Raw.Find(id), referenced, visited);
-            }
-        }
-
-        static IEnumerable<string> CollectRefs(System.Text.Json.Nodes.JsonNode node)
-        {
-            switch (node)
-            {
-                case System.Text.Json.Nodes.JsonObject obj:
-                {
-                    if (obj.Count == 1 && obj.TryGetPropertyValue("m_Id", out var value) && value is System.Text.Json.Nodes.JsonValue)
-                    {
-                        var id = (string)value;
-                        if (!string.IsNullOrEmpty(id))
-                            yield return id;
-                        yield break;
-                    }
-                    foreach (var pair in obj)
-                    {
-                        foreach (var id in CollectRefs(pair.Value))
-                            yield return id;
-                    }
-                    yield break;
-                }
-                case System.Text.Json.Nodes.JsonArray arr:
-                {
-                    foreach (var item in arr)
-                    {
-                        foreach (var id in CollectRefs(item))
-                            yield return id;
-                    }
-                    yield break;
-                }
             }
         }
     }

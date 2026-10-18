@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "Unity.Pipeline",
+        "Unity.Pipeline.Attributes",
         "Unity.VisualEffectGraph.Editor"
     ],
     "includePlatforms": [

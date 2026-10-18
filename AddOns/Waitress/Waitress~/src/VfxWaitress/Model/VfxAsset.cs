@@ -69,6 +69,8 @@ namespace VfxWaitress.Model
         public VfxNode Context;
         /// <summary>Flow links: (outputSlotIndex, target context, target input index).</summary>
         public readonly List<(int from, long toContext, int toIndex)> FlowOut = new List<(int, long, int)>();
+        /// <summary>The same links as recorded on the receiving end: (inputSlotIndex, source context, source output index).</summary>
+        public readonly List<(int to, long fromContext, int fromIndex)> FlowIn = new List<(int, long, int)>();
         /// <summary>Parameter nodes only: the on-canvas instances of an exposed parameter.</summary>
         public readonly List<VfxParameterNode> ParameterNodes = new List<VfxParameterNode>();
         public string ExposedName;
@@ -352,9 +354,18 @@ namespace VfxWaitress.Model
 
         void ReadFlow(VfxNode node, YamlDocument doc)
         {
-            var seq = doc.Body.Seq("m_OutputFlowSlot");
+            foreach (var (mine, other, index) in FlowLinks(doc, "m_OutputFlowSlot"))
+                node.FlowOut.Add((mine, other, index));
+            foreach (var (mine, other, index) in FlowLinks(doc, "m_InputFlowSlot"))
+                node.FlowIn.Add((mine, other, index));
+        }
+
+        /// <summary>(this context's slot index, the other context, the other's slot index) for one side's flow slots.</summary>
+        static IEnumerable<(int mine, long other, int index)> FlowLinks(YamlDocument doc, string key)
+        {
+            var seq = doc.Body.Seq(key);
             if (seq == null)
-                return;
+                yield break;
             for (var i = 0; i < seq.Items.Count; i++)
             {
                 var lines = seq.Items[i].Split('\n');
@@ -375,7 +386,7 @@ namespace VfxWaitress.Model
                             break;
                         }
                     }
-                    node.FlowOut.Add((i, target.Value, slotIndex));
+                    yield return (i, target.Value, slotIndex);
                 }
             }
         }

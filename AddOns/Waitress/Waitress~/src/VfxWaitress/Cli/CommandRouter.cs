@@ -120,6 +120,7 @@ namespace VfxWaitress.Cli
                 case "node":
                 case "block":
                 case "system":
+                case "resource":
                     return RunEdit(words, 2, output);
 
                 case "rm":
@@ -432,6 +433,7 @@ namespace VfxWaitress.Cli
             editor.PlaceAdded();
             foreach (var line in editor.Log)
                 output.WriteLine(line);
+            editor.RequireLoadable();
             if (dryRun)
             {
                 output.WriteLine("# --dry-run: nothing written");

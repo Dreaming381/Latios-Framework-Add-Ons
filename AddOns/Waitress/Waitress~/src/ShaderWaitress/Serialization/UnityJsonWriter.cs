@@ -226,5 +226,38 @@ namespace ShaderWaitress.Serialization
                 arr.Add(Ref(id));
             return arr;
         }
+
+        /// <summary>Every object id referenced anywhere inside a node, as {"m_Id": ...}.</summary>
+        public static IEnumerable<string> RefIds(JsonNode node)
+        {
+            switch (node)
+            {
+                case JsonObject obj:
+                {
+                    if (obj.Count == 1 && obj.TryGetPropertyValue("m_Id", out var value) && value is JsonValue)
+                    {
+                        var id = (string)value;
+                        if (!string.IsNullOrEmpty(id))
+                            yield return id;
+                        yield break;
+                    }
+                    foreach (var pair in obj)
+                    {
+                        foreach (var id in RefIds(pair.Value))
+                            yield return id;
+                    }
+                    yield break;
+                }
+                case JsonArray arr:
+                {
+                    foreach (var item in arr)
+                    {
+                        foreach (var id in RefIds(item))
+                            yield return id;
+                    }
+                    yield break;
+                }
+            }
+        }
     }
 }
