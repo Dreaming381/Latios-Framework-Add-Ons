@@ -42,7 +42,7 @@ times:
 
 Everything else works offline from the export. The tool carries its Editor
 script inside itself, writes it to `UserSettings/Waitress/ClipWaitress/`, and
-runs it through `run_script`, so nothing is imported into the project.
+runs it through `script run`, so nothing is imported into the project.
 
 ## Start Here
 

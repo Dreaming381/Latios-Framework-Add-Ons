@@ -23,7 +23,7 @@ profilerwaitress <command> <capture>
    |
    |-- cache fresh? ---- yes --> memory-map UserSettings/Waitress/ProfilerCache/<name>-<hash>.pwx --> answer
    |
-   `-- no --> unity command run_script --file UserSettings/Waitress/ProfilerWaitress/ProfilerWaitressEditor.cs
+   `-- no --> unity command script run --file UserSettings/Waitress/ProfilerWaitress/ProfilerWaitressEditor.cs
                  --entry ProfilerWaitressEditor.Extract  (LoadProfile, walk every frame and thread, write .pwx)
 ```
 
@@ -38,7 +38,7 @@ reach into internal Shader Graph and VFX Graph types through `.asmref`s. The
 Profiler API is public, so ProfilerWaitress embeds its Editor script as a
 resource, writes it to `UserSettings/Waitress/ProfilerWaitress/` (outside
 `Assets/`, so no import or domain reload), and runs it through Pipeline's
-`run_script` (Pipeline 0.7+). Nothing gets imported into the project, nothing
+`script run` (Pipeline 0.7+). Nothing gets imported into the project, nothing
 needs re-syncing by hand, and the Editor code always matches the binary. The
 add-on stays inert until a tool runs.
 
@@ -260,10 +260,10 @@ bound elsewhere.
 runs inside the Editor. An `EditorApplication.update` callback skips `--warmup`
 frames, clears them, stops after exactly `--frames` frames, saves, and writes
 `<capture>.status`. While it records, the CLI only polls the file system. The
-first version polled the Editor with `run_script`, and each poll compiled C#
+first version polled the Editor with `script run`, and each poll compiled C#
 inside the capture: 70 ms frames and 4 MB of Roslyn allocations every few
 hundred frames, which then topped `max`, `gc` and `hitches`. The callback lives
-in a `run_script` assembly, so the state it shares with later calls goes through
+in a `script run` assembly, so the state it shares with later calls goes through
 `SessionState`. A newer recording, or `RecordAbort`, retires an older callback.
 
 ## Verification

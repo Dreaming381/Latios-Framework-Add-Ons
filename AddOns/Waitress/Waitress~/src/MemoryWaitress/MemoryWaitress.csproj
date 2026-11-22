@@ -22,8 +22,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Editor\**" />
-    <EmbeddedResource Include="Editor\MemoryWaitressEditor.cs" LogicalName="MemoryWaitressEditor.cs" />
     <EmbeddedResource Include="Docs\*.md" />
   </ItemGroup>
 

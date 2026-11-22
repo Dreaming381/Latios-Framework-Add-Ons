@@ -112,7 +112,7 @@ namespace ProfilerWaitress.Cli
     (edit mode). The Profiler keeps only its last 'Frame Count' frames (Preferences > Analysis > Profiler,
     up to 2000); record longer runs from a player. --callstacks gc records managed allocation callstacks
     (for `gc`); also malloc, complete, native. --deep needs deep profiling already on (it reloads the domain).
-    An unfocused Editor ticks Play Mode only with Pipeline's set_autotick (on by default).
+    An unfocused Editor ticks Play Mode only with Pipeline's editor set_auto_tick (on by default).
 
   From a development player build, either run it with
       -profiler-enable -profiler-log-file <path>.raw -profiler-capture-frame-count <N>

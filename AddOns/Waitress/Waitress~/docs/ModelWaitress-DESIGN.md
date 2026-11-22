@@ -55,7 +55,7 @@ works from those records, offline and fast. The record holds:
 
 A record is current while the model's and its `.meta`'s write times match the
 stamp the Editor wrote. Any command first re-exports missing or stale models,
-in one `run_script` call for each batch of 50. Before reading a model, the
+in one `script run` call for each batch of 50. Before reading a model, the
 export calls `ImportAsset`, which re-imports only a file that changed while the
 Editor wasn't looking. With no Editor reachable, the last record is shown with
 a note, and a model that was never exported fails with the command to open the

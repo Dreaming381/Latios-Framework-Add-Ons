@@ -41,7 +41,7 @@ The binary is
 
 Only `build` and `types` need the Editor open with the Pipeline package (0.7 or
 newer). The tool carries its Editor script inside itself, writes it to
-`UserSettings/Waitress/BuildWaitress/`, and runs it through `run_script`, so
+`UserSettings/Waitress/BuildWaitress/`, and runs it through `script run`, so
 nothing is imported into the project.
 
 Install the agent skill with

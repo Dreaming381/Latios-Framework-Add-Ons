@@ -1,5 +1,5 @@
 // The Editor half of clipwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/ClipWaitress/, and runs
-// it through `unity command run_script`, so nothing is imported into the project. Export writes every clip of an asset
+// it through `unity command script run`, so nothing is imported into the project. Export writes every clip of an asset
 // with its settings, events and keyframes; Check resolves a clip's bindings against the objects that play it; Edit
 // changes .anim clips through AnimationUtility.
 

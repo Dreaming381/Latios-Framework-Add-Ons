@@ -1,5 +1,5 @@
 // The Editor half of terrainwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/TerrainWaitress/, and
-// runs it through `unity command run_script`, so nothing is imported into the project. Export writes each TerrainData's
+// runs it through `unity command script run`, so nothing is imported into the project. Export writes each TerrainData's
 // settings and prototypes as JSON and its heights, holes, splat weights, detail densities and trees as a binary sidecar.
 // Apply writes back what the CLI computed, with Undo.
 

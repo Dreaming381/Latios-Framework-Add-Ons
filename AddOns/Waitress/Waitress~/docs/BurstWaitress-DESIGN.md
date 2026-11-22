@@ -33,7 +33,7 @@ is checked.
     (internal), the Editor's `Progress` item named "Burst", and
     `ProjectSettings/Burst_DisableAssembliesForEditorCompilation.json`.
 
-The Editor half is one embedded C# file, run through `run_script`. It writes the
+The Editor half is one embedded C# file, run through `script run`. It writes the
 target index (`index.tsv`) once per code epoch, and writes dumps as
 `<key>.asm` plus `<key>.meta` into `UserSettings/Waitress/BurstWaitress/Dumps/`.
 The meta is written last, so a meta on disk means its dump is complete. The key
@@ -51,16 +51,23 @@ Editor script contains no assignment to any of them. Per-dump settings exist
 only as lines in the one `GetDisassembly` call's option string. `verify` reads
 the options before and after a full run and requires them unchanged.
 
-## Staying inside the Pipeline's 30 s limit
+## Keeping Editor calls short
 
-`run_script` work on the main thread is killed at about 30 s, and an aborted
-script never runs its `finally`. Compiles therefore run on a background task in
-the Editor (`GetDisassembly` works off the main thread, as the Inspector already
-uses it). The script waits up to 20 s and returns either way. The CLI then
-waits for the meta files on disk, without further Editor calls. A sweep that
-outlasts `--timeout` keeps every dump that finished, so running it again picks
-up where it stopped. One compile runs at a time: the lock lives in the
-AppDomain's data, since every `run_script` is a new assembly.
+A `script run` holds the Editor's main thread for as long as its entry point
+runs, and nothing interrupts it. When the call's `--timeout` passes, the CLI
+stops waiting but the Editor finishes the work anyway, `finally` blocks
+included (measured with Pipeline 1.0). So a long sweep can't live inside one
+call: it would freeze the Editor and outlive the tool that asked for it.
+Compiles therefore run on a background task in the Editor (`GetDisassembly`
+works off the main thread, as the Inspector already uses it). The script waits
+up to 20 s and returns either way. The CLI then waits for the meta files on
+disk, without further Editor calls, touching its request file every 2 s and
+deleting it when it exits. The background task checks that file before each
+method and stops once it is gone or 12 s stale, so Ctrl-C or the tool's own
+`--timeout` stops the Editor's queue too. A sweep that outlasts `--timeout`
+keeps every dump that finished, so running it again picks up where it stopped.
+One compile runs at a time: the lock lives in the AppDomain's data, since every
+`script run` is a new assembly.
 
 ## Reading a dump
 
@@ -68,7 +75,9 @@ AppDomain's data, since every `run_script` is a new assembly.
     `.LBB` and other local labels split blocks. `/EXPORT:` names the entry.
     When the entry is a stub of 12 instructions or fewer that calls one function
     defined in the dump (which happens with line info on), that function is the
-    body.
+    body. Under `Deterministic` the entry saves MXCSR (FPCR on ARM), sets
+    flush-to-zero and calls `<entry>_inner_<target>`; that function is the
+    body, and the wrapper is left out of the totals.
 2.  **Classes.** Each instruction gets one class: packed float, scalar float,
     packed int, scalar int, move, branch, call, ret, or other. Load and store
     are separate flags, so a packed multiply with a memory operand counts as
@@ -163,7 +172,17 @@ AppDomain's data, since every `run_script` is a new assembly.
     of the loop vectorizer's marks (a scalar loop beside it, a guard for the
     lanes it covers, `while*` predication, vector math calls): it is packed
     by hand, one `v256` or float4 per source iteration (`hand-packed` in
-    JSON). An outer loop is judged by its own instructions, not its inner
+    JSON), unless whole vectors in one stream tile its stride per pass: that
+    is the loop vectorizer's interleave on a count known to divide, as
+    `Hint.Assume((n & 31) == 0)` gives (one `ymm×8 unroll 4` loop, four ymm
+    loads covering 128 of 128 bytes, nothing beside it). The unroll alone
+    doesn't say: Kinemation's LOD job transforms one float3 per pass through
+    a 48-byte struct, `12/iter unroll 3` by lanes, with two xmm loads
+    covering 32 of 48 bytes, and stays SLP. A loop with no loads, stores,
+    calls or float or packed math is flagged (`empty` in sweep), and so is one
+    with no loads that stores only registers it never writes (`const`): if
+    the C# does per-element work, Burst removed it. Register-only loops with
+    math (Entities' mask walks, Myri's float wrap) aren't flagged. An outer loop is judged by its own instructions, not its inner
     loops'. A scalar loop laid out before a vector loop is its remainder when
     the vector loop's exit leads into it. Shape then decides
     the label: **vector** when one pass covers a whole number of vectors
@@ -212,7 +231,11 @@ All measured in this workspace on Burst 1.8.30, Unity 6000.3.24f1, x64 host.
     reason `status` compiles every entry point of the assembly once per build
     of it (`AssemblyChecks/`). The failing job now lives in
     `Latios.Validation.BurstWaitress.Failing`, next to `BwFailingNeighbor`, an
-    innocent method that `status` must report as failed.
+    innocent method that `status` must report as failed. That assembly
+    compiles only when `BURSTWAITRESS_FAILING_FIXTURE` is in the Scripting
+    Define Symbols, because the Editor's eager compile logs its BC1028 in the
+    console after every domain reload. Without the define, `verify` skips
+    those two cases and says so.
 -   **The cost of that check.** Kinemation has 259 entry points: about 0.75 s
     each with the real options, and 4 minutes for the whole assembly the first
     time. Unoptimized compiles (`--disable-opt`) are 2.3× faster and catch the
@@ -296,13 +319,22 @@ All measured in this workspace on Burst 1.8.30, Unity 6000.3.24f1, x64 host.
         Pressure kernel) packs within the element (SLP) on every target: one
         pass, one source iteration.
     -   ARMv7 (NEON32) and WASM float loops stay scalar.
+    -   **`Deterministic` turns off loop vectorization.** Mul, MulAdd, Range,
+        Channels8Plain and Sin are `ymm×8` loops under Default and scalar
+        under Deterministic on AVX2 (Mul also on SSE4 and ARM64); Sin calls
+        scalar `sinf`. Packing within one iteration survives (TransformPoints
+        stays `xmm×4 SLP`), and so do `[Spmd]` loops (the research's
+        `SumCallee` is `ymm×8 unroll 4` in every float mode). Core, Psyshock
+        and Transforms set Deterministic for the whole assembly only under
+        `LATIOS_BURST_DETERMINISM`, which this workspace doesn't define; the
+        tool merges assembly attributes as Burst's `TryGetOptions` does.
     -   Line info (`--debug=2`) makes the entry a stub that calls the body, and
         changes loop shape slightly (for example `add rdx, -32; jne` in place
         of `cmp; jne`).
--   **Calls from `run_script`.** A static `[BurstCompile]` method called through
-    reflection from `run_script` reported `IsBurst() = False`. That was while
+-   **Calls from `script run`.** A static `[BurstCompile]` method called through
+    reflection from `script run` reported `IsBurst() = False`. That was while
     its assembly's library was failing, so it is explained by the first fact
-    above, and wasn't retested afterwards. Jobs scheduled from `run_script` do
+    above, and wasn't retested afterwards. Jobs scheduled from `script run` do
     run Burst code.
 
 ## Verification
@@ -348,7 +380,7 @@ All measured in this workspace on Burst 1.8.30, Unity 6000.3.24f1, x64 host.
         count tests (`cmp .., 12` / `setb`), and a hand-packed `v256` loop.
 -   **Float modes.** The FMA count for MulAdd under Default, Strict and Fast
     equals a raw `vf(n)m(add|sub)` count of the body: 0, 0 and 6.
--   **Status honesty.**
+-   **Status honesty.** The first two need `BURSTWAITRESS_FAILING_FIXTURE`.
     -   `BwManagedJob` reports failed, with BC1028 and its line.
     -   `BwFailingNeighbor.Twice` reports failed, naming the assembly's
         failure.
@@ -368,8 +400,10 @@ All measured in this workspace on Burst 1.8.30, Unity 6000.3.24f1, x64 host.
     folded count tests fails the `setb` test. Dropping the disjunction rule
     fails both Myri tests; dropping both constant-register checks fails the
     ARM overflow-guard test (each check alone covers it). Accepting eq/ne
-    compares as alias evidence fails the lookup-cache test.
--   **Self-tests.** `burstwaitress selftest` runs 54 offline checks on 31
+    compares as alias evidence fails the lookup-cache test. Dropping the
+    `_inner_` rule, the tiled-vectors exception or the no-memory flags each
+    fails its new test.
+-   **Self-tests.** `burstwaitress selftest` runs 58 offline checks on 36
     recorded dumps (`Testing/Data`, paths scrubbed): operand splitting,
     symbol names, every loop fact above on x86, ARM64 and ARMv9 SVE (with an
     independent regex count of the SVE loop), spills, per-pass counts and
@@ -379,7 +413,8 @@ All measured in this workspace on Burst 1.8.30, Unity 6000.3.24f1, x64 host.
     count, a count folded into the alias check, the SVE `rdvl` distance and
     `n ≥ VL/16+1`, `n ≠ 1`, Myri's disjunction alias check, `max(VL/16,
     16)`, a data lane mask, an ARM overflow guard, or'ed count tests), a
-    hand-packed `v256` loop, a remainder laid out first, vector math calls,
+    hand-packed `v256` loop, a remainder-free `Hint.Assume` loop, the
+    Deterministic wrapper, loops with no memory work, a remainder laid out first, vector math calls,
     `fadda`, line mapping, the census on all x86 fixtures, option
     parsing and name resolution.
 
@@ -647,6 +682,18 @@ of simple loops, x86 guards and the float-mode diff. Fixed after it:
     ARM); bitwise ops given 32-bit lanes; a strict compare of two int
     bounds on ARM dropped as a guard; address-taken stack slots counted as
     spills (low).
+
+**Field feedback (the SPMD / FloatMode / Hint research session).** Fixed:
+the summary under `Deterministic` read only the flush-to-zero wrapper
+(`main -`, 17 instructions, for every method; `--fn 2` showed the real code);
+a loop whose stores Burst deleted read as an ordinary scalar loop (now
+`empty`), and one storing a constant per pass (now `const`); a vectorized loop
+whose remainder `Hint.Assume` removed read `SLP u4 (32/iter)`; `1 sN` wasn't
+in the sweep legend; the sweep header named a fixed safety setting while a
+`safety` column varied it, and `Deterministic` overran the float column.
+Kept: `HintKernels.MapBlocks` reads `ymm×8 SLP (1/iter)`, which is literal,
+since Burst fully unrolls the inner 32-iteration loop and the SLP vectorizer
+packs it, one outer iteration per pass.
 
 Open from round 5: a quoted alias check names one compare of a two-compare
 check; `(count doesn't fill whole vectors)` loops on byte data still need

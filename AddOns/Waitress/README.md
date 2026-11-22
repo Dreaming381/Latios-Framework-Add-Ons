@@ -31,7 +31,8 @@ problem.
 **Requirements:**
 
 -   The .NET 10 SDK or newer to build the tools
--   The Unity CLI with the Pipeline package
+-   The Unity CLI with the Pipeline package (0.10 or newer for MemoryWaitress
+    `capture`)
 -   VfxWaitress needs the Visual Effect Graph package
 -   Validated against Unity 6000.3 with Shader Graph and VFX Graph 17.3
 
@@ -68,9 +69,10 @@ for agent harnesses that support installable skills.
 Waitress ships no runtime code and no assemblies. The tools live in the
 `Waitress~` folder, which Unity ignores because of the trailing `~`. They read
 offline wherever they can, and reach the Editor through the Pipeline package
-when they can’t. Except for the graph tools, each tool carries its Editor script
-inside itself and runs it with `run_script` (Pipeline 0.7 or newer), so nothing
-gets imported into your project.
+when they can’t. Except for the graph tools, which use their Editor Bridge
+samples, and MemoryWaitress, which uses the Pipeline’s own snapshot commands,
+each tool carries its Editor script inside itself and runs it with `script run`
+(`run_script` before Pipeline 0.9), so nothing gets imported into your project.
 
 ### Graph Tools
 

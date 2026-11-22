@@ -55,7 +55,7 @@ your own names, types and roots (`--type`, `--name`, `--root`, `--filter`). For
 a leak hunt, take both snapshots in the same Play Mode session: instance ids
 stay the same, so `diff` lists exactly the new Unity objects. `capture --play`
 leaves Play Mode again only if it entered it, so for two snapshots in one session
-enter Play Mode first (`unity command editor_play`) and capture without `--play`.
+enter Play Mode first (`unity command editor.playmode start`) and capture without `--play`.
 
 ## Reading the output
 

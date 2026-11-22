@@ -83,7 +83,7 @@ namespace ProfilerWaitress.Commands
             if (play && !Status(root).GetProperty("playing").GetBoolean())
             {
                 log.WriteLine("entering Play Mode...");
-                EditorScript.Call(root, "SetPlayMode", true);
+                SetPlayMode(root, true);
                 enteredPlay = true;
                 WaitFor(root, s => s.GetProperty("playing").GetBoolean(), 120, "Play Mode to start");
             }
@@ -106,7 +106,7 @@ namespace ProfilerWaitress.Commands
                 {
                     var status = Status(root);
                     log.WriteLine($"timed out after {timeout} s with {status.GetProperty("frames").GetInt32()} frames recorded " +
-                                  "(is the Editor ticking? Play Mode in an unfocused Editor needs Pipeline's set_autotick); saving what there is");
+                                  "(is the Editor ticking? an unfocused Editor needs `unity command editor set_auto_tick --enabled true`); saving what there is");
                     result = EditorScript.Call(root, "RecordAbort", output.Replace('\\', '/'));
                 }
                 if (result.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
@@ -123,7 +123,7 @@ namespace ProfilerWaitress.Commands
                 {
                     try
                     {
-                        EditorScript.Call(root, "SetPlayMode", false);
+                        SetPlayMode(root, false);
                     }
                     catch (WaitressException e)
                     {
@@ -140,6 +140,14 @@ namespace ProfilerWaitress.Commands
         }
 
         static JsonElement Status(string root) => EditorScript.Call(root, "RecordStatus");
+
+        static void SetPlayMode(string root, bool playing)
+        {
+            var command = playing ? "editor.playmode start" : "editor.playmode stop";
+            var reply = UnityCli.Call(root, command, null, 120);
+            if (!reply.Success)
+                throw new WaitressException($"`{command}` failed: {reply.Error}");
+        }
 
         static void WaitFor(string root, Func<JsonElement, bool> done, double seconds, string what)
         {

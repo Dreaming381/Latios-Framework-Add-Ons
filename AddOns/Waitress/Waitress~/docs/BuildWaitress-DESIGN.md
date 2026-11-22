@@ -120,14 +120,20 @@ follow. The tool needs neither the define nor ImHex.
 
 Measured on Unity 6000.3.24 with Entities 1.4.8, unless a line says otherwise.
 
--   **Main-thread time limit.** Pipeline cuts any command off after 30 seconds
-    on the main thread, whatever `--timeout` says.
-    -   A build can't run inside `run_script`. The Editor script checks the
-        request and schedules the build with `EditorApplication.delayCall`.
-        When the build finishes, it writes its result to
-        `build-status.json`, and the CLI polls that file.
-    -   The scheduled delegate lives in the `run_script` assembly, which stays
-        loaded for the length of the build.
+-   **A build runs outside the `script run` call.** A `script run` holds the
+    Editor's main thread until it returns. Once its `--timeout` passes, the CLI
+    stops waiting but the Editor carries on (Pipeline 1.0; Pipeline 0.8 cut
+    main-thread work off at about 30 s). A build inside the call would tie the
+    tool's wait to one CLI call and freeze the Editor for its whole length.
+    -   So the Editor script checks the request and schedules the build with
+        `EditorApplication.delayCall`. When the build finishes, it writes its
+        result to `build-status.json`, and the CLI polls that file.
+    -   The scheduled delegate lives in the `script run` assembly, which stays
+        loaded for the length of the build (rechecked on 6000.3.28 with
+        Pipeline 1.0).
+    -   `delayCall` runs on the Editor's next update. On 6000.3.28 an unfocused
+        Editor didn't start the build until its window was focused, even with
+        `editor set_auto_tick` on.
 -   **Failures before the build steps aren't recorded.** These include an
     Entities build processor exception, player script compilation errors and
     Burst errors.

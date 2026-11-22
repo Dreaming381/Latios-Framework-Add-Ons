@@ -1,5 +1,5 @@
 // The Editor half of profilerwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/ProfilerWaitress/,
-// and runs its entry points through `unity command run_script`, so nothing is imported into the project.
+// and runs its entry points through `unity command script run`, so nothing is imported into the project.
 // Every entry point returns one line of JSON.
 
 using System;
@@ -145,7 +145,7 @@ public static class ProfilerWaitressEditor
 
 
     // Recording runs inside the Editor from an update callback, so the CLI never calls into the Editor while frames
-    // are being recorded (every run_script compiles C#, which would land in the capture). The callback skips the
+    // are being recorded (every script run compiles C#, which would land in the capture). The callback skips the
     // warm-up frames, stops after the requested count, saves, and writes <output>.status for the CLI to read.
     // The callback lives in this script's assembly; state shared with later calls goes through SessionState.
     const string k_RecordingKey = "ProfilerWaitress.Recording";
@@ -259,12 +259,6 @@ public static class ProfilerWaitressEditor
             return Error("no recording is running");
         SessionState.EraseString(k_RecordingKey);
         return Finish(Path.GetFullPath(output), "stopped early");
-    }
-
-    public static string SetPlayMode(bool playing)
-    {
-        EditorApplication.isPlaying = playing;
-        return "{\"ok\":true}";
     }
 
     static int MaxFrames() => EditorPrefs.GetInt("Profiler.FrameCount", 300);

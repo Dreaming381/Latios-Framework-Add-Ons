@@ -73,7 +73,8 @@ namespace MemoryWaitress.Cli
                manager. Editor snapshots also contain everything the Editor itself has loaded."),
             ("snapshots", @"Taking snapshots
 
-  capture                snapshots the Editor as it is (edit mode, or Play Mode if it is playing).
+  capture                snapshots what the Editor's Profiler is connected to, normally the Editor itself as it
+                         is (edit mode, or Play Mode if it is playing).
   capture --play         enters Play Mode if it isn't playing, waits --wait seconds (2), snapshots, and leaves
                          Play Mode again only if it entered it.
   capture --name before  appends a label to the file name, so `diff before after` finds both.
@@ -81,8 +82,9 @@ namespace MemoryWaitress.Cli
 
   Files go to <project>/MemoryCaptures/ (Unity's default .gitignore excludes it). An Editor snapshot holds the
   whole Editor process, 1-2 GB for a DOTS project, and takes a few seconds. For game-only numbers, take one in a
-  development player: call Unity.Profiling.Memory.MemoryProfiler.TakeSnapshot from game code, or use the Memory
-  Profiler window connected to the player, then read the .snap here.
+  development player: connect the Profiler to it (`unity command diagnostics profiler_targets`, then
+  `diagnostics profiler_connect --target <name>`) and capture, or call
+  Unity.Profiling.Memory.MemoryProfiler.TakeSnapshot from game code, then read the .snap here.
 
   For a leak hunt: capture A, repeat the suspect action several times, capture B, `diff A B`. Within one Editor
   run objects keep their instance ids, so `diff` lists exactly the Unity objects that are new."),

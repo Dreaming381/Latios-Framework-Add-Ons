@@ -75,7 +75,8 @@ namespace BuildWaitress.Cli
   Scenes are asset paths or names; none means the scenes enabled in the build profile. The default output is
   Builds/<target>/<productName>.exe (or .x86_64/.app/.apk, or a folder). --detailed records which scenes use each
   asset (`why`); --clean deletes the output folder first (only one that looks like a player build), so no files from
-  an earlier build ship. The build runs in the Editor on its next update; the tool waits and reads the result,
+  an earlier build ship. The build runs in the Editor on its next update, which an unfocused Editor may not reach
+  until its window is focused; the tool waits and reads the result,
   including errors that happen before Unity's build steps start (script compilation, build processors, Burst),
   which the report itself doesn't keep. It refuses while a scene has unsaved changes, since the build would stop
   at a save dialog. Unity, render pipelines and packages rewrite some settings files during builds; the tool lists

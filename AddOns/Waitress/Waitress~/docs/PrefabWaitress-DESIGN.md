@@ -68,14 +68,14 @@ object records with insert indices, and default overrides. A mistake there
 corrupts a scene quietly, and an agent can't check it without the Editor anyway.
 `SerializedObject` and `PrefabUtility` already do all of it, record overrides as
 the Inspector would, and save the file in the Editor's own form. So an edit is
-one `run_script` call carrying every operation. The Editor validates every
+one `script run` call carrying every operation. The Editor validates every
 lookup and value before it changes anything. Objects are found by child index
 and the name at each level is checked, so a file that changed since the tool
 read it fails instead of editing the wrong object. After the save, the tool
 reads the file back and prints what is now there, which is the confirmation an
 agent needs without human review.
 
-Unity's `JsonUtility` can't fill arrays of types compiled by `run_script`, so the
+Unity's `JsonUtility` can't fill arrays of types compiled by `script run`, so the
 Editor script reads its request with a small JSON reader of its own.
 
 ## Models

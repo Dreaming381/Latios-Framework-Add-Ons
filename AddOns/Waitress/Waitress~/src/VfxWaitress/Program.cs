@@ -13,7 +13,7 @@ namespace VfxWaitress
             {
                 return CommandRouter.Run(args, Console.Out, Console.Error);
             }
-            catch (VfxWaitressException e)
+            catch (Waitress.WaitressException e)
             {
                 Console.Error.WriteLine("error: " + e.Message);
                 return 2;

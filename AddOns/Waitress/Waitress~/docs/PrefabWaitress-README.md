@@ -30,7 +30,7 @@ The binary is
 Reading needs nothing else: no Editor, no package. Editing needs the Editor open
 with the Pipeline package (0.7 or newer). The tool carries its Editor script
 inside itself, writes it to `UserSettings/Waitress/PrefabWaitress/`, and runs it
-through `run_script`, so nothing is imported into the project.
+through `script run`, so nothing is imported into the project.
 
 ## Start Here
 

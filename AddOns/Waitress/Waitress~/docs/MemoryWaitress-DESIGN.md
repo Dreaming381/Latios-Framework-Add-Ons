@@ -134,7 +134,7 @@ one Play Mode session, with `MemoryScenario.Grow(500)` between the two captures:
 -   `diff` reported +500 `LeakNode` and +506 `byte[]`.
 
 Two subagent rounds then checked numbers against the live Editor through
-`run_script`:
+`script run`:
 
 -   `Resources.FindObjectsOfTypeAll` counts matched for every type checked.
 -   `Profiler.GetRuntimeMemorySizeLong` matched for textures, RenderTextures
@@ -145,13 +145,22 @@ Two subagent rounds then checked numbers against the live Editor through
     known limit.
 -   A snapshot cut short is reported as incomplete.
 
+## Taking a Snapshot
+
+`capture` runs the Pipeline's `diagnostics memory_snapshot` and polls
+`diagnostics memory_snapshot_status` for the snapshot id it was given.
+`--collect-garbage false` is passed because that command collects garbage
+first by default, which would hide the garbage `info` reports. `--play` enters
+and leaves Play Mode with `editor.playmode start` and `stop`.
+
 ## Known Unsupported
 
 -   **Native allocation callstacks** (`capture --callstacks`) are recorded but
     not printed.
--   **Snapshots of players** are read the same way, but `capture` only snapshots
-    the Editor. A player snapshot comes from the Memory Profiler window
-    connected to it, or from `MemoryProfiler.TakeSnapshot` in game code.
+-   **Snapshots of players** are read the same way. `capture` snapshots
+    whatever the Editor's Profiler is connected to, so after
+    `unity command diagnostics profiler_connect --target <player>` it should
+    capture that player, but that hasn't been tried with a player yet.
 -   **IL2CPP snapshots** follow the same format and the crawler accepts
     direct class pointers, but none were tested.
 -   **Managed stacks, AppDomain data and raw native pointers** aren't roots.

@@ -466,20 +466,26 @@ namespace BurstWaitress.Commands
             var nameWidth = Math.Min(60, Math.Max(6, names.Values.Max(n => n.Length)));
             var showTarget = sets.Select(s => s.Target).Distinct().Count() > 1 || sets[0].Target != "AVX2";
             var showSafety = sets.Select(s => s.Safety).Distinct().Count() > 1;
+            string FloatName(Dump d) => d.Options.EffectiveFloatMode(d.Entry) + (d.Options.FloatPrecision != null && d.Options.FloatPrecision != "Standard" ? "/" + d.Options.FloatPrecision[0] : "");
+            var floatWidth = Math.Max(10, dumps.Max(d => FloatName(d).Length) + 1);
             var sb = new StringBuilder();
-            sb.Append("method".PadRight(nameWidth)).Append(showTarget ? " target  " : " ").Append("float     ").Append(showSafety ? "safety " : "")
+            sb.Append("method".PadRight(nameWidth)).Append(showTarget ? " target  " : " ").Append("float".PadRight(floatWidth)).Append(showSafety ? "safety " : "")
               .Append("main loop          /iter  packed alias n≥    loops calls      spills    fma  instrs");
             w.WriteLine(sb.ToString());
+            var fixedSettings = new List<string>();
             if (!showTarget)
-                w.WriteLine($"(target {sets[0].Target}, safety {sets[0].Safety})");
+                fixedSettings.Add("target " + sets[0].Target);
+            if (!showSafety)
+                fixedSettings.Add("safety " + sets[0].Safety);
+            if (fixedSettings.Count > 0)
+                w.WriteLine("(" + string.Join(", ", fixedSettings) + ")");
             foreach (var d in dumps)
             {
                 var line = new StringBuilder();
                 line.Append(ShortenLeft(names[d.Entry.Name], nameWidth).PadRight(nameWidth)).Append(' ');
                 if (showTarget)
                     line.Append(Short(d.Options.Target).PadRight(8));
-                var fm = d.Options.EffectiveFloatMode(d.Entry) + (d.Options.FloatPrecision != null && d.Options.FloatPrecision != "Standard" ? "/" + d.Options.FloatPrecision[0] : "");
-                line.Append(fm.PadRight(10));
+                line.Append(FloatName(d).PadRight(floatWidth));
                 if (showSafety)
                     line.Append(d.Options.Safety.PadRight(7));
                 if (d.Error != null)
@@ -496,7 +502,7 @@ namespace BurstWaitress.Commands
                 else
                 {
                     var s = main.Stats;
-                    var width = s.PackedWidth > 0 ? Report.ShapeWidth(a.Isa, main, true) : "scalar";
+                    var width = (s.PackedWidth > 0 ? Report.ShapeWidth(a.Isa, main, true) : "scalar") + Report.Idle(main);
                     var packed = s.PackedRatio >= 0 ? Report.Pct(s.PackedRatio) : s.PackedInt > 0 ? "int" : "-";
                     line.Append(width.PadRight(18)).Append(' ').Append(Report.PerIter(main).PadRight(6)).Append(' ').Append(packed.PadRight(6)).Append(' ')
                         .Append((main.AliasGuard ? "yes" : "-").PadRight(5)).Append(' ').Append((Report.MinCount(main) ?? "-").PadRight(5)).Append(' ');
@@ -508,7 +514,9 @@ namespace BurstWaitress.Commands
                 w.WriteLine(line.ToString());
             }
             w.WriteLine("main loop = the innermost loop in the method's own functions (the job's Execute, not the producer's dispatch) vectorized across iterations, else the widest");
-            w.WriteLine("/iter = source iterations one pass covers (B: a pointer's bytes); SLP = packed within one iteration; ? = packed, span unknown; n≥ = smallest guarded count it runs at");
+            w.WriteLine("/iter = source iterations one pass covers (B: a pointer's bytes; 1 sN: scalar, counter steps by N); SLP = packed within one iteration; ? = packed, span unknown; n≥ = smallest guarded count it runs at");
+            if (dumps.Any(d => d.Error == null && d.Asm.Main is Loop m && (m.NoMemory || m.InvariantStores)))
+                w.WriteLine("empty = the main loop only counts: no loads, stores, calls or float/vector math (if its C# does more, Burst removed it); const = no loads, and it stores only values computed outside it");
             if (dumps.Any(d => d.Error == null && d.Asm.Calls.Any(c => c.Kind == "scalar math" && c.OutsideRemainder > 0)))
                 w.WriteLine("calls (N sm) = N scalar math library calls outside remainder loops, the usual sign a math.* call didn't vectorize");
             return dumps.Any(d => d.Error != null) ? 1 : 0;

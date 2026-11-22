@@ -36,7 +36,7 @@ It needs the Editor open with the Pipeline package (0.7 or newer) whenever a
 model needs to be exported, which is once per change to the model. After that,
 reading works without the Editor. The tool carries its Editor script inside
 itself, writes it to `UserSettings/Waitress/ModelWaitress/`, and runs it through
-`run_script`, so nothing is imported into the project.
+`script run`, so nothing is imported into the project.
 
 ## Start Here
 

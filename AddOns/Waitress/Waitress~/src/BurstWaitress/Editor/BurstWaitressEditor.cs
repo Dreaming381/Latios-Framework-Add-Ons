@@ -1,5 +1,5 @@
 // The Editor half of burstwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/BurstWaitress/, and
-// runs it through `unity command run_script`, so nothing is imported into the project.
+// runs it through `unity command script run`, so nothing is imported into the project.
 //
 // It only ever READS BurstCompiler.Options. Assigning any of them, even to the value it already holds, invalidates
 // every Burst-compiled method and starts a project-wide recompile; EnableBurstCompileSynchronously can wedge the
@@ -382,7 +382,7 @@ public static class BurstWaitressEditor
         return string.Join("\n", errors.Select(e => e.Trim())) + (at != null ? "\n" + at.Trim() : "");
     }
 
-    // One compile at a time across script runs: each run_script is its own assembly, so the lock lives in the domain.
+    // One compile at a time across script runs: each script run is its own assembly, so the lock lives in the domain.
     static object CompileLock()
     {
         const string key = "BurstWaitress.CompileLock";

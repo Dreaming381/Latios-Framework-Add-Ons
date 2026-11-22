@@ -68,8 +68,10 @@ namespace BurstWaitress.Cli
                                bytes (16 B/iter) unless a remainder loop or guard shows it is loop-vectorized.
   SLP                          packed math within one source iteration (a float4, a pair of accumulators, a struct walked
                                one element per pass): 1/iter, or a stream reading under half its stride, or a loop packed
-                               by hand (one v256 per iteration, none of the loop vectorizer's remainder loop or lane
-                               guard). Not vectorized across iterations, whatever the register width.
+                               by hand (one v256 per pass, none of the loop vectorizer's remainder loop or lane guard).
+                               Not vectorized across iterations, whatever the register width. Whole vectors tiling a
+                               stream's pass with no remainder (a count known to divide, Hint.Assume((n & 31) == 0))
+                               stay vectorized.
   (span unknown)               packed math whose per-pass count doesn't say (a pointer step, a batch stride).
   remainder                    a scalar loop beside a vector loop in the same function: the leftover iterations.
   runs if n ≥ N                the smallest value of the guarded count (usually the C# loop bound) for which that loop
@@ -90,6 +92,13 @@ namespace BurstWaitress.Cli
   outer loop                   a loop whose own instructions (outside its inner loops) have no packed math.
   copy                         a loop that only moves vectors (a vectorized copy or conversion), at the move width.
   (1/iter, counter step 2)     a scalar loop whose counter steps by 2 (i += 2): still one source iteration per pass.
+                               sweep writes it 1 s2.
+  no loads, stores, calls or   a loop that only counts in integer registers. If its C# does more, Burst removed that
+  float math: it only counts   work (sweep: empty).
+  stores only values computed  no loads, and every store writes a value set before the loop (a constant fill; sweep:
+  outside the loop             const). If the C# computes per element, Burst folded the computation away.
+  Deterministic                Burst wraps the entry in a function that sets flush-to-zero and calls <entry>_inner_<target>;
+                               the summary reads the inner function.
   calls [scalar math]          a math library routine called per element (Sleef_sinf_u35): the math.* call didn't
                                vectorize, unless it is only in a remainder loop (marked). [vector math] routines take a
                                whole register (Sleef_sinf4_u35sse4) and count as packed work at that width.

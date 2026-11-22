@@ -28,7 +28,7 @@ and the same build makes the other two tools.
 ProfilerWaitress needs no package sample. The Profiler API it uses is public,
 so the tool carries its Editor script inside itself, writes it to
 `UserSettings/Waitress/ProfilerWaitress/`, and runs it through the Pipeline
-package's `run_script` command (Pipeline 0.7 or newer). Nothing gets imported
+package's `script run` command (`run_script` before Pipeline 0.9). Nothing gets imported
 into the project, and the Editor code always matches the tool.
 
 ## Start Here

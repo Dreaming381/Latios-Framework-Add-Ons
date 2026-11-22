@@ -1,19 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using MemoryWaitress.Snap;
 using MemoryWaitress.Text;
 
 namespace MemoryWaitress.Commands
 {
-    /// <summary>Takes a snapshot of the open Editor (edit mode or Play Mode) and lists the snapshots a project has.</summary>
+    /// <summary>Takes a snapshot through the Pipeline's own snapshot command (edit mode or Play Mode) and lists the snapshots a project has.</summary>
     public static class Capture
     {
-        const int k_Managed = 1, k_NativeObjects = 2, k_NativeAllocations = 4, k_AllocationSites = 8, k_Stacks = 16;
-
         public static int Run(Args args, TextWriter w, TextWriter log)
         {
             var play = args.Flag("play");
@@ -34,31 +33,45 @@ namespace MemoryWaitress.Commands
             if (!output.EndsWith(".snap", StringComparison.OrdinalIgnoreCase))
                 throw new WaitressException("--out must be a .snap file");
             output = Path.GetFullPath(output);
-            var flags = k_Managed | k_NativeObjects | k_NativeAllocations | (callstacks ? k_AllocationSites | k_Stacks : 0);
+            var flags = "ManagedObjects,NativeObjects,NativeAllocations" + (callstacks ? ",NativeAllocationSites,NativeStackTraces" : "");
 
             var enteredPlay = false;
-            if (play && !EditorScript.Call(root, "Status").GetProperty("playing").GetBoolean())
+            if (play && !EditorCommands.Playing(root))
             {
                 log.WriteLine("entering Play Mode...");
-                EditorScript.Call(root, "SetPlayMode", true);
+                EditorCommands.Call(root, "editor.playmode start");
                 enteredPlay = true;
-                WaitFor(root, s => s.GetProperty("playing").GetBoolean(), 120, "Play Mode to start");
+                WaitFor(root, () => EditorCommands.Playing(root), 120, "Play Mode to start");
                 Thread.Sleep(TimeSpan.FromSeconds(wait));
             }
+            string target;
             try
             {
-                var status = output + ".status";
-                EditorScript.Call(root, "Capture", output.Replace('\\', '/'), flags);
+                var started = EditorCommands.Call(root, "diagnostics memory_snapshot", new Dictionary<string, string>
+                {
+                    ["flags"] = flags,
+                    ["output-path"] = output,
+                    ["collect-garbage"] = "false",
+                    ["timeout-seconds"] = ((int)Math.Ceiling(timeout)).ToString(CultureInfo.InvariantCulture),
+                });
+                var id = started.GetProperty("snapshotId").GetString();
                 var clock = Stopwatch.StartNew();
-                while (!File.Exists(status) && clock.Elapsed.TotalSeconds < timeout)
-                    Thread.Sleep(200);
-                if (!File.Exists(status))
-                    throw new WaitressException($"the snapshot did not finish within {timeout} s (is the Editor responsive?)");
-                Thread.Sleep(50);
-                var result = JsonDocument.Parse(File.ReadAllText(status)).RootElement;
-                File.Delete(status);
-                if (result.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
-                    throw new WaitressException(result.GetProperty("error").GetString());
+                while (true)
+                {
+                    var status = EditorCommands.Call(root, "diagnostics memory_snapshot_status");
+                    var state = status.GetProperty("status").GetString();
+                    var mine = status.TryGetProperty("snapshotId", out var sid) && sid.GetString() == id;
+                    if (mine && state == "completed")
+                    {
+                        target = status.TryGetProperty("target", out var t) ? t.GetString() : null;
+                        break;
+                    }
+                    if (mine && (state == "failed" || state == "interrupted"))
+                        throw new WaitressException($"the snapshot {state}: " + (status.TryGetProperty("error", out var e) ? e.ToString() : status.GetRawText()));
+                    if (clock.Elapsed.TotalSeconds > timeout)
+                        throw new WaitressException($"the snapshot did not finish within {timeout} s (is the Editor responsive?)");
+                    Thread.Sleep(500);
+                }
             }
             finally
             {
@@ -66,7 +79,7 @@ namespace MemoryWaitress.Commands
                 {
                     try
                     {
-                        EditorScript.Call(root, "SetPlayMode", false);
+                        EditorCommands.Call(root, "editor.playmode stop");
                     }
                     catch (WaitressException e)
                     {
@@ -74,7 +87,7 @@ namespace MemoryWaitress.Commands
                     }
                 }
             }
-            w.WriteLine($"wrote {output} ({Format.Bytes(new FileInfo(output).Length)})");
+            w.WriteLine($"wrote {output} ({Format.Bytes(new FileInfo(output).Length)}){(target != null && target != "Editor" ? " from " + target : "")}");
             if (!noInfo)
                 Info.Run(new Model(Snapshot.Load(output)), Args.Parse(Array.Empty<string>()), w);
             return 0;
@@ -98,14 +111,14 @@ namespace MemoryWaitress.Commands
             return 0;
         }
 
-        static void WaitFor(string root, Func<JsonElement, bool> done, double seconds, string what)
+        static void WaitFor(string root, Func<bool> done, double seconds, string what)
         {
             var clock = Stopwatch.StartNew();
             while (clock.Elapsed.TotalSeconds < seconds)
             {
                 try
                 {
-                    if (done(EditorScript.Call(root, "Status")))
+                    if (done())
                         return;
                 }
                 catch (WaitressException)

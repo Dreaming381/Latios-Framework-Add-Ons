@@ -36,7 +36,7 @@ The binary is
 Every command needs the Editor open with the Pipeline package (0.7 or newer)
 the first time it sees an entry point, since only the Editor's Burst can
 compile. The tool carries its Editor script inside itself, writes it to
-`UserSettings/Waitress/BurstWaitress/`, and runs it through `run_script`, so
+`UserSettings/Waitress/BurstWaitress/`, and runs it through `script run`, so
 nothing is imported into the project. Dumps are cached in
 `UserSettings/Waitress/BurstWaitress/Dumps/` per compile of the scripts, so
 reading one again, or narrowing it differently, doesn't need the Editor.
@@ -92,7 +92,7 @@ a device. Burst 1.8 has no AVX-512 target.
 ## Examples
 
 ```
-burstwaitress status BwKernels.Mul BwManagedJob      # compiled · failed: BC1028 Creating a managed array at BwFailing.cs(17,13)
+burstwaitress status BwKernels.Mul BwManagedJob      # compiled · failed: BC1028 Creating a managed array at BwFailing.cs(19,13) (needs BURSTWAITRESS_FAILING_FIXTURE)
 burstwaitress dump BwKernels.Channels8Plain          # main loop ymm×8 (8/iter), runs if n ≥ 40, alias check (59 instrs)
 burstwaitress diff BwKernels.Channels8Plain BwKernels.Channels8NoAlias   # -77 instrs, n ≥ 40 → 8, no alias check
 burstwaitress dump BwKernels.TransformPoints         # xmm×4 SLP (1/iter): one float3 per pass, not vectorized
@@ -124,6 +124,12 @@ burstwaitress dump BwKernels.Sin --raw loop:3        # the remainder loop that c
     already treats job containers as not aliasing, so jobs rarely have one.
 -   **gather emulated: N lane loads.** An indexed load done one lane at a
     time.
+-   **No per-element work.** `it only counts` (sweep: `empty`: no loads,
+    stores, calls or float/vector math) and `stores only values computed
+    outside the loop` (`const`) mark loops whose C# work Burst removed, or
+    integer-only loops such as `while (x < 0) x += n`.
+-   **Deterministic.** Burst wraps the entry in a flush-to-zero function that
+    calls `<entry>_inner_<target>`; the summary reads the inner function.
 
 ## Limits
 

@@ -40,6 +40,7 @@ namespace BurstWaitress.Asm
                         l.AliasGuardInstrs = 0;
                         l.AliasFirstLine = l.AliasLastLine = 0;
                     }
+                    Idle(f, l, file.Isa);
                     l.OwnPacked = f.Instrs.Count(x => (x.Class == Cls.PackedFloat || x.Class == Cls.PackedInt) && InLoop(f, l, x) &&
                                                       !f.Loops.Any(c => c != l && c.Parent == l && InLoop(f, c, x)));
                     if (file.Isa != Isa.Wasm)
@@ -65,6 +66,52 @@ namespace BurstWaitress.Asm
             PickFocus(file, owner);
             CollectCalls(file);
             return file;
+        }
+
+        /// <summary>A loop with no loads that only counts in integer registers, or stores only values computed outside it.</summary>
+        static void Idle(Function f, Loop l, Isa isa)
+        {
+            var s = l.Stats;
+            if (s.Loads > 0 || s.Calls > 0)
+                return;
+            if (s.Stores == 0)
+            {
+                // Register-only work with float or vector math (a mask walk, a float wrap) is real work.
+                l.NoMemory = s.PackedFloat + s.PackedInt + s.ScalarFloat == 0;
+                return;
+            }
+            var body = f.Instrs.Where(x => x.Mnemonic != ":" && InLoop(f, l, x)).ToList();
+            var written = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var x in body)
+            {
+                if (x.Store || x.Class == Cls.Branch || x.Operands.Length == 0 || s_X86NoWrite.Contains(x.Mnemonic) ||
+                    x.Mnemonic is "cmn" or "tst" or "fcmp" or "fcmpe" or "ptest" or "vptest" or "ucomiss" or "vucomiss" or "comiss" or "vcomiss")
+                    continue;
+                if (RegKey(x.Operands[0]) is string r)
+                    written.Add(r);
+            }
+            foreach (var x in body.Where(x => x.Store))
+                foreach (var o in x.Operands)
+                    if (!o.Contains('[', StringComparison.Ordinal) && RegKey(o) is string r && written.Contains(r))
+                        return;
+            l.InvariantStores = true;
+        }
+
+        static readonly Regex s_RegKey = new Regex(@"^\{?\s*(?:([xyz]mm|[qdshbvzp])(\d+)|([re]?[a-z]{2,3}|r\d+[dwb]?|[xw]\d+))(?:\.\w+)?(?:\[\d+\])?\s*\}?$", RegexOptions.Compiled);
+
+        /// <summary>A register operand's architectural register (xmm0/ymm0, s0/q0/v0, eax/rax, w0/x0 alike); null for
+        /// immediates, memory and zero registers.</summary>
+        static string RegKey(string op)
+        {
+            var m = s_RegKey.Match(op.Trim());
+            if (!m.Success)
+                return null;
+            if (m.Groups[1].Success)
+                return (m.Groups[1].Value == "p" ? "p" : "v") + m.Groups[2].Value;
+            var g = m.Groups[3].Value;
+            if (g is "wzr" or "xzr")
+                return null;
+            return s_X86Reg.TryGetValue(g, out var r) ? r : Regex.IsMatch(g, @"^[xw]\d+$") ? "x" + g.Substring(1) : g;
         }
 
         public static bool InLoop(Function f, Loop l, Instr x) =>
@@ -1544,6 +1591,7 @@ namespace BurstWaitress.Asm
             }
             // Full-vector accesses at distinct offsets in one stream are the unroll (four ymm loads of a byte mask: 4).
             l.StreamVectors = streams.Values.Select(s => s.vectorOffsets.Count).DefaultIfEmpty(0).Max();
+            l.TiledVectors = streams.Values.Where(s => vectorBytes > 0 && s.vectorOffsets.Count * vectorBytes == s.stride).Select(s => s.vectorOffsets.Count).DefaultIfEmpty(0).Max();
             Shape(l);
             return true;
         }
@@ -1683,7 +1731,9 @@ namespace BurstWaitress.Asm
             var guard = l.MinCount >= l.ElemsPerIter && l.MinCount > 1;
             var predicated = f.Instrs.Any(x => InLoop(f, l, x) && x.Mnemonic.StartsWith("while", StringComparison.Ordinal));
             var vectorBeside = f.Loops.Any(o => o != l && o.Innermost && o.Depth == l.Depth && o.Shape == Asm.Shape.Vector && o.ElemsPerIter != l.ElemsPerIter);
-            if (scalarBeside || guard || predicated || vectorBeside || l.Stats.VectorMathCalls > 0)
+            // Several whole vectors tiling a stream's pass with no leftovers is the loop vectorizer's interleave on a count
+            // known to divide (Hint.Assume((n & 31) == 0)); code packed by hand moves one vector per pass.
+            if (scalarBeside || guard || predicated || vectorBeside || l.Stats.VectorMathCalls > 0 || l.TiledVectors > 1)
                 return;
             l.Shape = Asm.Shape.Slp;
             l.HandPacked = true;
@@ -1743,12 +1793,18 @@ namespace BurstWaitress.Asm
             file.Body = file.Entry;
             if (file.Entry == null)
                 return;
-            var calls = file.Entry.Instrs.Where(x => x.Class == Cls.Call).ToList();
-            if (file.Entry.Stats.Instrs <= 12 && calls.Count == 1 && calls[0].Target != null)
+            // A thin stub forwarding to one function, or Deterministic's wrapper that sets flush-to-zero around a call
+            // to <entry>_inner_<target>.
+            for (var hop = 0; hop < 3; hop++)
             {
-                var callee = file.Functions.FirstOrDefault(f => f.Name == calls[0].Target);
-                if (callee != null)
-                    file.Body = callee;
+                var calls = file.Body.Instrs.Where(x => x.Class == Cls.Call && x.Target != null).ToList();
+                var inner = calls.Select(c => file.Functions.FirstOrDefault(f => f.Name == c.Target))
+                                 .FirstOrDefault(f => f != null && f.Name.StartsWith(file.Body.Name + "_inner_", StringComparison.Ordinal));
+                if (inner == null && !IsUserFunction(file.Body) && file.Body.Stats.Instrs <= 12 && calls.Count == 1 && file.Body.Instrs.Count(x => x.Class == Cls.Call) == 1)
+                    inner = file.Functions.FirstOrDefault(f => f.Name == calls[0].Target);
+                if (inner == null || inner == file.Body)
+                    return;
+                file.Body = inner;
             }
         }
 

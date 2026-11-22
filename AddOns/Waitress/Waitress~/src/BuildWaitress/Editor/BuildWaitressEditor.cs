@@ -1,5 +1,5 @@
 // The Editor half of buildwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/BuildWaitress/, and
-// runs it through `unity command run_script`, so nothing is imported into the project. Build makes a player build;
+// runs it through `unity command script run`, so nothing is imported into the project. Build makes a player build;
 // Types exports the Entities TypeManager table that subscene analysis needs for names and chunk layouts.
 
 using System;
@@ -63,8 +63,8 @@ public static class BuildWaitressEditor
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output)));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(status)));
         File.WriteAllText(status, "{\"state\":\"running\"}", new UTF8Encoding(false));
-        // The build outlives the command's main-thread time limit, so it runs on the next Editor update and reports
-        // through the status file.
+        // A build inside this call would hold the main thread for its whole length, so it runs on the next Editor update
+        // and reports through the status file.
         EditorApplication.delayCall += () => RunBuild(scenes, output, target, group, options, status);
         return "{\"ok\":true,\"scheduled\":true,\"target\":" + Q(target.ToString()) + ",\"scenes\":" + scenes.Length + "}";
     }

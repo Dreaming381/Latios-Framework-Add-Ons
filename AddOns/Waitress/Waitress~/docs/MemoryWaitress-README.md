@@ -26,12 +26,10 @@ The binary is
 `UserSettings/Waitress/build/bin/MemoryWaitress/release/memorywaitress[.exe]`.
 
 Reading a snapshot needs nothing else: no package, no Editor, no project. Taking
-one needs the Editor open with the Pipeline package (0.7 or newer). The tool
-carries its Editor script inside itself, writes it to
-`UserSettings/Waitress/MemoryWaitress/`, and runs it through `run_script`, so
-nothing is imported into the project. It uses only Unity's public
-`MemoryProfiler.TakeSnapshot` API, so the Memory Profiler package isn't needed
-for that either.
+one needs the Editor open with the Pipeline package (0.10 or newer). `capture`
+asks the Pipeline's own `diagnostics memory_snapshot` command for the snapshot
+and uses `editor.playmode` for `--play`, so nothing is imported into the
+project and the Memory Profiler package isn't needed.
 
 ## Start Here
 
@@ -82,7 +80,7 @@ $ memorywaitress why scenarioB LeakNode
 Take a snapshot, repeat the suspect action a few times, take another, and diff:
 
 ```
-unity command editor_play
+unity command editor.playmode start
 memorywaitress capture --name before --no-info
 # ... repeat the action ...
 memorywaitress capture --name after --no-info

@@ -41,7 +41,7 @@ It needs the Editor open with the Pipeline package (0.7 or newer):
 
 Everything else works offline. The tool carries its Editor script inside
 itself, writes it to `UserSettings/Waitress/TerrainWaitress/`, and runs it
-through `run_script`, so nothing is imported into the project. Install the agent
+through `script run`, so nothing is imported into the project. Install the agent
 skill with
 `terrainwaitress skill --install <project>/.claude/skills/terrainwaitress`.
 

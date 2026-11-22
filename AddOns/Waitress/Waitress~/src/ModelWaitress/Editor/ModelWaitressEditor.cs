@@ -1,5 +1,5 @@
 // The Editor half of modelwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/ModelWaitress/, and
-// runs it through `unity command run_script`, so nothing is imported into the project. Export writes what the importer
+// runs it through `unity command script run`, so nothing is imported into the project. Export writes what the importer
 // is set to and what it produced; Edit changes importer settings through the ModelImporter API and reimports.
 
 using System;

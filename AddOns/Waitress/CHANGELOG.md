@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic
 Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] – 2026-11-14
+
+### Changed
+
+-   MemoryWaitress `capture` now uses the Pipeline package’s own snapshot and
+    Play Mode commands, needs Pipeline 0.10 or newer, and snapshots whatever
+    the Editor’s Profiler is connected to
+-   ProfilerWaitress `record --play` now enters and leaves Play Mode with the
+    Pipeline package’s own commands
+
+### Fixed
+
+-   Fixed every tool failing to reach the Editor with Pipeline 0.9 or newer
+-   Fixed ShaderWaitress and VfxWaitress reporting misspelled options as an
+    internal error
+-   Fixed BurstWaitress analyzing the floating-point wrapper instead of the
+    method it wraps when the float mode is Deterministic
+-   Fixed BurstWaitress calling vectorized loops with no remainder SLP, such as
+    loops whose trip count comes from `Hint.Assume`
+
+### Improved
+
+-   Improved BurstWaitress to flag loops that only count or store
+    loop-invariant values
+-   Improved BurstWaitress sweep tables to name only the fixed settings in their
+    header and to fit Deterministic in the float column
+
 ## [0.2.0] – 2026-10-17
 
 ### Added

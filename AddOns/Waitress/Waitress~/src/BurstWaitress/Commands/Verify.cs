@@ -24,6 +24,7 @@ namespace BurstWaitress.Commands
             args.RejectExtraPositionals(0);
             args.RejectUnknown();
             var failed = 0;
+            var skipped = 0;
             void Check(string name, Func<string> body)
             {
                 try
@@ -171,6 +172,18 @@ namespace BurstWaitress.Commands
             });
 
             var modes = new[] { "Default", "Strict", "Fast" };
+            Check("Deterministic is summarized past its FTZ wrapper; no remainder is still vector; a constant-store loop is flagged", () =>
+            {
+                var det = DumpStore.Get(new[] { (E("BwKernels.Mul"), new CompileOptions { FloatMode = "Deterministic" }), (E("BwKernels.MulMultipleOf32"), avx2), (E("BwKernels.Fill"), avx2) }, w);
+                var a = det[0].Asm;
+                Expect(Regex.IsMatch(det[0].Text, @"(v?)ldmxcsr") && a.Body != a.Entry && a.Body.Name.Contains("_inner_", StringComparison.Ordinal) && a.Main != null,
+                       "Mul Deterministic body " + a.Body?.Name);
+                var m32 = det[1].Asm.Main;
+                Expect(m32.Shape == Shape.Vector && m32.Unroll == 4 && !det[1].Asm.Body.Loops.Any(l => l != m32 && l.Innermost), "MulMultipleOf32: " + Report.LoopLine(Isa.X86, m32));
+                var fill = det[2].Asm.Main;
+                Expect(fill.InvariantStores && fill.Stats.Loads == 0, "Fill: " + Report.LoopLine(Isa.X86, fill));
+                return $"Mul Deterministic main {Report.ShapeWidth(Isa.X86, a.Main, true)}; MulMultipleOf32 {Report.ShapeWidth(Isa.X86, m32, true)}; Fill{Report.Idle(fill)}";
+            });
             var fmaDumps = DumpStore.Get(modes.Select(m => (E("BwKernels.MulAdd"), new CompileOptions { FloatMode = m })).ToList(), w);
             Check("a*b + c: FMA counts per float mode match the raw dumps", () =>
             {
@@ -187,9 +200,15 @@ namespace BurstWaitress.Commands
                 return "fma " + string.Join(", ", parts);
             });
 
-            Check("status: managed allocation fails, its assembly fails, plain job not eligible, kernel compiled", () =>
+            var failingFixture = index.Resolve(Ns + "BwManagedJob").Count > 0;
+            if (!failingFixture)
             {
-                var names = new[] { Ns + "BwManagedJob", Ns + "BwFailingNeighbor.Twice(int)", Ns + "BwPlainJob", E("BwKernels.Mul").Name };
+                skipped++;
+                w.WriteLine("skip status: managed allocation fails, its assembly fails · add BURSTWAITRESS_FAILING_FIXTURE to the Scripting Define Symbols to compile Assets/Validation/BurstWaitress/Failing");
+            }
+            Check(failingFixture ? "status: managed allocation fails, its assembly fails, plain job not eligible, kernel compiled" : "status: plain job not eligible, kernel compiled", () =>
+            {
+                var names = new[] { Ns + "BwManagedJob", Ns + "BwFailingNeighbor.Twice(int)", Ns + "BwPlainJob", E("BwKernels.Mul").Name }.Skip(failingFixture ? 0 : 2).ToArray();
                 var file = Path.Combine(Project.Dir, "Requests", "verify-status.txt");
                 Directory.CreateDirectory(Path.GetDirectoryName(file));
                 File.WriteAllLines(file, names);
@@ -203,10 +222,15 @@ namespace BurstWaitress.Commands
                     System.Threading.Thread.Sleep(1000);
                 }
                 var states = r.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("state").GetString()).ToList();
-                Expect(states[0] == "failed", "BwManagedJob: " + states[0]);
-                Expect(states[1] == "failed" && r.GetProperty("items")[1].TryGetProperty("assemblyFailure", out _), "BwFailingNeighbor.Twice: " + states[1]);
-                Expect(states[2] == "not eligible", "BwPlainJob: " + states[2]);
-                Expect(states[3] == "compiled" || states[3] == "pending", "BwKernels.Mul: " + states[3]);
+                var at = 0;
+                if (failingFixture)
+                {
+                    Expect(states[0] == "failed", "BwManagedJob: " + states[0]);
+                    Expect(states[1] == "failed" && r.GetProperty("items")[1].TryGetProperty("assemblyFailure", out _), "BwFailingNeighbor.Twice: " + states[1]);
+                    at = 2;
+                }
+                Expect(states[at] == "not eligible", "BwPlainJob: " + states[at]);
+                Expect(states[at + 1] == "compiled" || states[at + 1] == "pending", "BwKernels.Mul: " + states[at + 1]);
                 return string.Join(", ", states);
             });
 
@@ -232,7 +256,7 @@ namespace BurstWaitress.Commands
                     Expect(before.GetProperty(key).GetRawText() == after.GetProperty(key).GetRawText(), $"{key}: {before.GetProperty(key).GetRawText()} -> {after.GetProperty(key).GetRawText()}");
                 return $"safety {after.GetProperty("safetyChecks").GetRawText()}, synchronous {after.GetProperty("synchronous").GetRawText()}, dirty scenes {after.GetProperty("dirtyScenes").GetRawText()}";
             });
-            w.WriteLine(failed == 0 ? "all passed" : $"{failed} failed");
+            w.WriteLine((failed == 0 ? "all passed" : $"{failed} failed") + (skipped > 0 ? $", {skipped} skipped" : ""));
             return failed == 0 ? 0 : 1;
         }
 

@@ -20,6 +20,10 @@ namespace BurstWaitress.Testing
 
         static AsmFile Load(string name, string target) => Analyzer.Analyze(Data(name), target);
 
+        static string FixtureTarget(string name) =>
+            name.Contains("_armv9", StringComparison.Ordinal) ? "ARMV9A" : name.Contains("_arm64", StringComparison.Ordinal) ? "ARMV8A_AARCH64" :
+            name.Contains("_sse4", StringComparison.Ordinal) ? "X64_SSE4" : "AVX2";
+
         public static int Run(TextWriter w)
         {
             var failed = 0;
@@ -303,6 +307,44 @@ namespace BurstWaitress.Testing
             {
                 var m = Main(Load("Dot_armv9", "ARMV9A"));
                 Eq(2, m.Stats.OrderedReductions, "fadda");
+            });
+            Test("Deterministic: the body is the <entry>_inner_<target> function the FTZ wrapper calls", () =>
+            {
+                var a = Load("SumDeterministic_avx2", "AVX2");
+                Eq(true, a.Body.Name.EndsWith("_inner_avx2@@16", StringComparison.Ordinal), "body " + a.Body.Name);
+                Eq(false, a.Focus.Contains(a.Entry), "wrapper counted");
+                var m = Main(a);
+                Eq(Shape.Vector, m.Shape, "shape");
+                Eq(4, m.Unroll, "unroll");
+            });
+            Test("several vectors per pass with no remainder (Hint.Assume((n & 31) == 0)) is vector, not hand-packed", () =>
+            {
+                var m = Main(Load("MapMultipleOf32_avx2", "AVX2"));
+                Eq(Shape.Vector, m.Shape, "shape");
+                Eq(false, m.HandPacked, "hand packed");
+                Eq(32, m.ElemsPerIter, "per pass");
+            });
+            Test("a float3 per pass through a 48-byte struct stays SLP: its vectors don't tile the stream", () =>
+            {
+                var a = Analyzer.Analyze(Data("LodGroup_avx2"), "AVX2", "Latios.Kinemation.Authoring.Systems.LodGroupBakingSystem.Job");
+                var l = a.Focus.SelectMany(f => f.Loops).Single(x => x.Stats.FirstLine == 537);
+                Eq(Shape.Slp, l.Shape, "shape");
+                Eq(583, a.Main.Stats.FirstLine, "main");
+            });
+            Test("a loop with no memory work is flagged: only counting, or storing an invariant value", () =>
+            {
+                Eq(true, Main(Load("EmptyLoop_avx2", "AVX2")).NoMemory, "empty");
+                var c = Main(Load("ConstStore_avx2", "AVX2"));
+                Eq(false, c.NoMemory, "const store is memory work");
+                Eq(true, c.InvariantStores, "invariant stores");
+                // An integer-only wrap (Myri: while (x < 0) x += n) only counts too; a float one doesn't.
+                var wrap = Load("MyriSample_avx2", "AVX2").Functions.SelectMany(f => f.Loops).Single(l => l.Stats.FirstLine == 1330);
+                Eq(true, wrap.NoMemory, "integer wrap loop");
+                Eq(false, Load("MyriSample_avx2", "AVX2").Functions.SelectMany(f => f.Loops).Single(l => l.Stats.FirstLine == 1974).NoMemory, "float wrap loop");
+                var flagged = Assembly.GetExecutingAssembly().GetManifestResourceNames().Where(n => n.EndsWith(".asm", StringComparison.Ordinal))
+                                      .Select(n => n.Substring(0, n.Length - 4)).Where(n => n != "EmptyLoop_avx2" && n != "ConstStore_avx2")
+                                      .Where(n => Load(n, FixtureTarget(n)).Main is Loop m && (m.NoMemory || m.InvariantStores)).ToList();
+                Eq("", string.Join(", ", flagged), "other fixtures' main loops");
             });
             foreach (var (name, target) in new[]
                      {

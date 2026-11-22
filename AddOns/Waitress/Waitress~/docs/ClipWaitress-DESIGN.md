@@ -63,7 +63,7 @@ on an object's hierarchy and components. It finds its targets offline first:
 
 ## Edits
 
-Edits go through the `AnimationUtility` API in one `run_script` call:
+Edits go through the `AnimationUtility` API in one `script run` call:
 
 -   `SetEditorCurves`, `SetObjectReferenceCurve`, `SetAnimationClipSettings`
     and `SetAnimationEvents`;

@@ -36,36 +36,22 @@ namespace PrefabWaitress.Model
                 ["entry"] = "PrefabWaitressEditor." + entry,
                 ["args"] = JsonSerializer.Serialize(args),
             };
-            var reply = UnityCli.Call(root, "run_script", call, 3600);
+            var reply = UnityCli.RunScript(root, call, 3600);
             if (!reply.Success)
             {
                 var why = reply.Reached ? reply.Error : "no Editor has this project open (" + reply.Error + ")";
                 throw new WaitressException($"{entry} needs the Unity Editor: {why}. Open the project with `unity open \"{root}\"` and retry; " +
                                             "reading scenes and prefabs works without it");
             }
-            JsonElement run;
+            JsonElement result;
             try
             {
-                run = JsonDocument.Parse(reply.Result).RootElement;
+                result = JsonDocument.Parse(reply.Result).RootElement;
             }
             catch (JsonException)
             {
-                throw new WaitressException("unexpected run_script reply: " + reply.Result);
+                throw new WaitressException($"unexpected reply from {entry}: " + reply.Result);
             }
-            if (!run.TryGetProperty("success", out var ok) || ok.ValueKind != JsonValueKind.True)
-            {
-                var sb = new StringBuilder("the Editor script failed: ");
-                if (run.TryGetProperty("errorDetails", out var details) && details.ValueKind == JsonValueKind.String)
-                    sb.Append(details.GetString());
-                else if (run.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
-                    sb.Append(error.GetString());
-                if (run.TryGetProperty("diagnostics", out var diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
-                    foreach (var d in diagnostics.EnumerateArray())
-                        sb.Append("\n  line ").Append(d.GetProperty("line")).Append(": ").Append(d.GetProperty("message").GetString());
-                throw new WaitressException(sb.ToString());
-            }
-            var text = run.GetProperty("result").GetString();
-            var result = JsonDocument.Parse(text).RootElement;
             if (result.TryGetProperty("ok", out var fine) && fine.ValueKind == JsonValueKind.False)
                 throw new WaitressException(result.GetProperty("error").GetString());
             return result;

@@ -41,9 +41,12 @@ for `sweep` and `list`. An ambiguous name lists the candidates. `list <filter>` 
     (the smallest guarded count, usually the C# loop bound, for which that loop runs; one more than the iterations for a
     loop from 1), runtime `alias check` with its dump lines, `remainder`. Shapes: no tag = vectorized across iterations;
     `SLP` = packed within one source iteration (a float4, paired accumulators, a struct read one element per pass), not
-    across iterations, including loops packed by hand (one `v256`/float4 per iteration, no remainder loop);
-    `(span unknown)` = packed, but the per-pass count doesn't say. `main` is the innermost loop
-    vectorized across iterations, else the widest;
+    across iterations, including loops packed by hand (one `v256`/float4 per pass, no remainder loop; whole vectors
+    tiling a stream's pass with no remainder, as `Hint.Assume((n & 31) == 0)` gives, stay vectorized);
+    `(span unknown)` = packed, but the per-pass count doesn't say. `(1/iter, counter step N)` is a scalar loop stepping
+    its counter by N. `no loads, stores, calls or float math: it only counts` and `stores only values computed outside the
+    loop` flag loops that do no per-element work: if the C# does, Burst removed it. `main` is the innermost loop vectorized across iterations, else the
+    widest;
   - calls, with `[scalar math]` flagged (a `math.*` call that didn't vectorize; `(remainder)` when it is only in the
     leftover loop, which is normal), the loop each sits in, and the functions they come from;
   - functions Burst didn't inline, with sizes.
@@ -54,7 +57,8 @@ for `sweep` and `list`. An ambiguous name lists the candidates. `list <filter>` 
 - `diff <a> <b>` or `diff <a> --float-mode Default,Strict` - side by side with deltas, loops matched, calls added and
   removed.
 - `sweep <names...> --target avx2,sse4 --float-mode Default,Strict,Fast` - one row per method × option set: main loop
-  width and shape (`SLP`, `?` span unknown, `u4` unroll, `ord` ordered reduction), `/iter`, packed %, alias check, `n≥`,
+  width and shape (`SLP`, `?` span unknown, `u4` unroll, `ord` ordered reduction, `empty`/`const` no memory work),
+  `/iter` (`1 s2` = scalar, counter step 2), packed %, alias check, `n≥`,
   loops, calls (`sm` = scalar math outside remainder loops), spills, FMA, size. Use globs: `"BwKernels.*"`. Prints
   progress on stderr; Ctrl-C (or a timeout) stops the Editor's queue, and finished dumps stay cached.
 - `targets` - the targets this Editor compiles. `verify` - acceptance checks against the BurstWaitress validation
@@ -72,7 +76,11 @@ in `diff` and `sweep`.
 - Measured on Burst 1.8.30: `Default` float mode does not contract `a*b+c` into FMA (only `Fast` does); a
   `sum += a[i]*b[i]` reduction stays scalar unless the float mode is `Fast`; `math.sin` vectorizes inline on AVX2 and
   through vector Sleef calls (`Sleef_sinf4_u35sse4`) on SSE4, with scalar `sinf` only in the remainder loop; ARMv7 and
-  WASM float loops stay scalar.
+  WASM float loops stay scalar. `Deterministic` turns off loop vectorization (Mul, MulAdd and math.sin loops stay
+  scalar on AVX2, SSE4 and ARM64; SLP float4 code and `[Spmd]` loops still pack).
+- Under `Deterministic` Burst wraps the entry in a flush-to-zero function that calls `<entry>_inner_<target>`; the
+  summary reads the inner function (`--raw entry` shows the wrapper). Latios Core, Psyshock and Transforms are
+  Deterministic only when `LATIOS_BURST_DETERMINISM` is defined.
 - A packed width alone doesn't mean vectorized: check the shape. `xmm×4 SLP (1/iter)` is one float4 per pass.
   `(span unknown)` loops need `--raw` to decide. On ARMv9 many loops stay NEON (128-bit, as on ARM64); SVE shows up for
   simple maps, masked stores and ordered reductions (`fadda` keeps a Default-mode float reduction in lane order).

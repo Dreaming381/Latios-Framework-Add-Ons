@@ -71,6 +71,10 @@ namespace BurstWaitress.Commands
             return text;
         }
 
+        /// <summary>The sweep's flag for a loop that does no memory work: "empty" (only counts) or "const" (stores
+        /// only values computed outside it, no loads).</summary>
+        public static string Idle(Loop l) => l.NoMemory ? " empty" : l.InvariantStores ? " const" : "";
+
         public static string LoopLine(Isa isa, Loop l)
         {
             var s = l.Stats;
@@ -82,6 +86,10 @@ namespace BurstWaitress.Commands
                 sb.Append(" (").Append(PerIter(l)).Append("/iter)");
             if (l.Remainder)
                 sb.Append(" · remainder");
+            if (l.NoMemory)
+                sb.Append(" · no loads, stores, calls or float math: it only counts");
+            else if (l.InvariantStores)
+                sb.Append(" · no loads; stores only values computed outside the loop");
             sb.Append(" · packed ").Append(s.PackedRatio < 0 ? (s.PackedInt > 0 ? $"int {s.PackedInt}" : "-") : Pct(s.PackedRatio));
             if (s.VectorMathCalls > 0)
                 sb.Append(" · vector math calls ").Append(s.VectorMathCalls);
@@ -522,6 +530,8 @@ namespace BurstWaitress.Commands
                     parent = l.Parent?.Id,
                     shape = !l.Innermost && l.Shape == Shape.Scalar ? "outer" : l.Shape.ToString().ToLowerInvariant(),
                     handPacked = l.HandPacked,
+                    noMemory = l.NoMemory,
+                    invariantStores = l.InvariantStores,
                     remainder = l.Remainder,
                     width = l.Stats.PackedWidth,
                     scalable = l.Stats.Scalable,

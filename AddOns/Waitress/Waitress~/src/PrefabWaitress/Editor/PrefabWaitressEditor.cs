@@ -1,5 +1,5 @@
 // The Editor half of prefabwaitress. The CLI embeds this file, writes it to UserSettings/Waitress/PrefabWaitress/,
-// and runs it through `unity command run_script`, so nothing is imported into the project. Every edit goes through
+// and runs it through `unity command script run`, so nothing is imported into the project. Every edit goes through
 // SerializedObject and PrefabUtility, so Unity records and writes the overrides itself.
 
 using System;
@@ -707,7 +707,7 @@ public static class PrefabWaitressEditor
         return "{" + string.Join(", ", parts) + "}";
     }
 
-    // JsonUtility can't fill arrays of types compiled by run_script, so the request is read by hand.
+    // JsonUtility can't fill arrays of types compiled by script run, so the request is read by hand.
     static Request ParseRequest(string json)
     {
         var i = 0;

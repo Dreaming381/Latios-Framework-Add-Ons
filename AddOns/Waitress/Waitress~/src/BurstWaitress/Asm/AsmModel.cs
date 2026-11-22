@@ -114,9 +114,15 @@ namespace BurstWaitress.Asm
         public bool Strided;
         /// <summary>The most full-width vector accesses at distinct offsets in one stream per pass; 0 when none.</summary>
         public int StreamVectors;
+        /// <summary>The most full-width vector accesses in one stream that together cover its whole stride per pass.</summary>
+        public int TiledVectors;
         /// <summary>Packed instructions in this loop outside its inner loops.</summary>
         public int OwnPacked;
         public Shape Shape;
+        /// <summary>No loads, stores, calls or float/vector math: the loop only counts in integer registers.</summary>
+        public bool NoMemory;
+        /// <summary>No loads, and every store writes a value the loop doesn't compute.</summary>
+        public bool InvariantStores;
         /// <summary>A scalar loop after a vector loop in the same function (or before one with an alias check, whose
         /// fallback it also is): the leftover iterations.</summary>
         public bool Remainder;
